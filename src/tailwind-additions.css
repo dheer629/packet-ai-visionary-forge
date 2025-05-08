@@ -1,0 +1,36 @@
+
+@layer utilities {
+  .animate-pulse-glow {
+    animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 5px currentColor, 0 0 10px currentColor;
+    }
+    50% {
+      opacity: 0.6;
+      box-shadow: 0 0 2px currentColor;
+    }
+  }
+  
+  .cyber-panel-gradient {
+    background: linear-gradient(
+      to bottom right,
+      rgba(var(--color-cyber-background), 0.9),
+      rgba(var(--color-cyber-muted), 0.7)
+    );
+  }
+  
+  .subtle-scroll-glow::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(to bottom, theme('colors.cyber.primary'), theme('colors.cyber.secondary'));
+    opacity: 0.5;
+  }
+}
