@@ -64,13 +64,13 @@ export default {
 					ring: 'hsl(var(--sidebar-ring))'
 				},
 				cyber: {
-					background: '#0f172a',
-					foreground: '#f8fafc',
-					primary: '#06b6d4',
-					secondary: '#a855f7',
-					accent: '#2dd4bf',
-					muted: '#1e293b',
-					border: '#334155'
+					background: '#ffffff',
+					foreground: '#323232',
+					primary: '#1a73e8',
+					secondary: '#6200ee',
+					accent: '#03a9f4',
+					muted: '#f5f5f5',
+					border: '#e0e0e0'
 				}
 			},
 			borderRadius: {

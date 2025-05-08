@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { AlertTriangle, CheckCircle, Search, Info } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AlertTriangle, CheckCircle, Search, Info, MessageSquare } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 interface AIInsightsProps {
@@ -67,9 +67,12 @@ const AIInsights: React.FC<AIInsightsProps> = ({ data }) => {
   };
 
   return (
-    <div className="cyber-box">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold cyber-text">AI Insights</h2>
+    <Card className="border border-cyber-border shadow-sm">
+      <CardHeader className="flex flex-row justify-between items-center pb-2">
+        <div>
+          <CardTitle className="text-lg font-semibold text-cyber-primary">AI Insights</CardTitle>
+          <CardDescription>AI-powered network traffic analysis</CardDescription>
+        </div>
         
         <Button
           onClick={runAIAnalysis}
@@ -85,70 +88,75 @@ const AIInsights: React.FC<AIInsightsProps> = ({ data }) => {
             </>
           )}
         </Button>
-      </div>
+      </CardHeader>
       
-      {!data && (
-        <div className="text-center py-8 text-cyber-foreground/70">
-          <p>Upload a PCAP file to analyze</p>
-        </div>
-      )}
-      
-      {data && !insights && !isAnalyzing && (
-        <div className="text-center py-8 border border-dashed border-cyber-border rounded-md">
-          <p className="text-cyber-foreground/70">Click "Run AI Analysis" to generate insights</p>
-        </div>
-      )}
-      
-      {isAnalyzing && (
-        <div className="space-y-2 py-4">
-          <div className="h-4 bg-cyber-muted rounded animate-pulse"></div>
-          <div className="h-4 bg-cyber-muted rounded animate-pulse w-5/6"></div>
-          <div className="h-4 bg-cyber-muted rounded animate-pulse w-4/6"></div>
-        </div>
-      )}
-      
-      {insights && (
-        <div className="space-y-4">
-          <Card className="cyber-box bg-cyber-background border border-cyber-border">
-            <p className="text-sm text-cyber-foreground/90">{insights.summary}</p>
-          </Card>
-          
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-cyber-accent">Key Findings</h3>
-            
-            {insights.findings.map((finding: any, index: number) => (
-              <div key={index} className="flex items-start p-3 border-l-2 border-cyber-border bg-cyber-muted bg-opacity-30 rounded">
-                <div className="mr-3">
-                  {renderFindingIcon(finding.type)}
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium">{finding.title}</h4>
-                  <p className="text-xs text-cyber-foreground/70">{finding.description}</p>
-                </div>
+      <CardContent>
+        {!data && (
+          <div className="text-center py-8 text-gray-500">
+            <p>Upload a PCAP file to analyze</p>
+          </div>
+        )}
+        
+        {data && !insights && !isAnalyzing && (
+          <div className="text-center py-8 border border-dashed border-cyber-border rounded-md">
+            <p className="text-gray-500">Click "Run AI Analysis" to generate insights</p>
+          </div>
+        )}
+        
+        {isAnalyzing && (
+          <div className="space-y-2 py-4">
+            <div className="h-4 bg-gray-100 rounded animate-pulse"></div>
+            <div className="h-4 bg-gray-100 rounded animate-pulse w-5/6"></div>
+            <div className="h-4 bg-gray-100 rounded animate-pulse w-4/6"></div>
+          </div>
+        )}
+        
+        {insights && (
+          <div className="space-y-4">
+            <div className="bubble">
+              <div className="flex items-start">
+                <MessageSquare className="h-5 w-5 mr-3 text-cyber-primary" />
+                <p className="text-sm text-gray-700">{insights.summary}</p>
               </div>
-            ))}
-          </div>
-          
-          <div>
-            <h3 className="text-sm font-medium text-cyber-accent mb-2">Recommendations</h3>
-            <ul className="space-y-1">
-              {insights.recommendations.map((rec: string, index: number) => (
-                <li key={index} className="text-sm flex items-center">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyber-primary mr-2"></span>
-                  {rec}
-                </li>
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-cyber-accent">Key Findings</h3>
+              
+              {insights.findings.map((finding: any, index: number) => (
+                <div key={index} className="flex items-start p-3 border-l-2 border-cyber-border bg-white rounded shadow-sm">
+                  <div className="mr-3">
+                    {renderFindingIcon(finding.type)}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium">{finding.title}</h4>
+                    <p className="text-xs text-gray-600">{finding.description}</p>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
+            
+            <div>
+              <h3 className="text-sm font-medium text-cyber-accent mb-2">Recommendations</h3>
+              <ul className="space-y-1">
+                {insights.recommendations.map((rec: string, index: number) => (
+                  <li key={index} className="text-sm flex items-center">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyber-primary mr-2"></span>
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            
+            <Separator className="bg-cyber-border" />
+            
+            <div className="text-xs text-gray-500">
+              Analysis completed on {new Date(insights.timestamp).toLocaleString()}
+            </div>
           </div>
-          
-          <Separator className="bg-cyber-border" />
-          
-          <div className="text-xs text-cyber-foreground/50">
-            Analysis completed on {new Date(insights.timestamp).toLocaleString()}
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };
 

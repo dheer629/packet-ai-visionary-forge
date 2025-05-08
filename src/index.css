@@ -5,33 +5,33 @@
 
 @layer base {
   :root {
-    --background: 217 33% 17%;
-    --foreground: 210 40% 98%;
+    --background: 210 20% 98%;
+    --foreground: 224 71% 4%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 4%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
 
-    --primary: 189 94% 43%;
+    --primary: 217 71% 53%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 270 95% 65%;
+    --secondary: 271 81% 47%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 217 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 173 87% 50%;
+    --accent: 199 89% 48%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217 32.6% 17.5%;
-    --input: 217 32.6% 17.5%;
-    --ring: 187 100% 50%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
 
     --radius: 0.5rem;
   }
@@ -45,7 +45,7 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* Custom cyber styling */
+  /* Custom styling */
   .cyber-border {
     @apply border-cyber-border border-[1px] rounded-md overflow-hidden;
   }
@@ -56,8 +56,8 @@
 
   .cyber-grid-bg {
     background-image: 
-      linear-gradient(to right, rgba(51, 65, 85, 0.1) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(51, 65, 85, 0.1) 1px, transparent 1px);
+      linear-gradient(to right, rgba(224, 224, 224, 0.1) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(224, 224, 224, 0.1) 1px, transparent 1px);
     background-size: 20px 20px;
   }
 
@@ -66,7 +66,7 @@
   }
 
   .cyber-glow {
-    text-shadow: 0 0 5px theme('colors.cyber.primary'), 0 0 10px rgba(6, 182, 212, 0.5);
+    text-shadow: 0 0 4px theme('colors.cyber.primary'), 0 0 8px rgba(26, 115, 232, 0.4);
   }
 
   .cyber-box {

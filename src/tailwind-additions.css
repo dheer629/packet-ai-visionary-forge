@@ -18,8 +18,8 @@
   .cyber-panel-gradient {
     background: linear-gradient(
       to bottom right,
-      rgba(var(--color-cyber-background), 0.9),
-      rgba(var(--color-cyber-muted), 0.7)
+      rgba(255, 255, 255, 0.9),
+      rgba(245, 245, 245, 0.8)
     );
   }
   
@@ -32,5 +32,36 @@
     height: 100%;
     background: linear-gradient(to bottom, theme('colors.cyber.primary'), theme('colors.cyber.secondary'));
     opacity: 0.5;
+  }
+
+  .bubble {
+    position: relative;
+    background: rgba(26, 115, 232, 0.05);
+    border-radius: 1.5rem;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    border: 1px solid rgba(26, 115, 232, 0.2);
+  }
+
+  .bubble:before {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    bottom: -10px;
+    left: 20px;
+    border: 10px solid transparent;
+    border-top-color: rgba(26, 115, 232, 0.2);
+  }
+
+  .bubble:after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    bottom: -8px;
+    left: 21px;
+    border: 9px solid transparent;
+    border-top-color: rgba(26, 115, 232, 0.05);
   }
 }

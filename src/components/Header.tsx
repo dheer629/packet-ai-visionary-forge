@@ -1,31 +1,92 @@
 
 import React from 'react';
-import { AlertCircle, Server, Activity } from 'lucide-react';
+import { Server, Activity, User, HelpCircle, ExternalLink, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const Header = () => {
+  const authorDetails = {
+    name: "Dheeraj Vishwakarma",
+    title: "Senior Machine Learning Engineer",
+    avatar: "https://aimldheeraj.netlify.app/assets/img/hero-img.jpg",
+    linkedin: "https://www.linkedin.com/in/dheeraj-vishwakarma-61350918/",
+    experience: "10+ years in AI & ML Engineering"
+  };
+
   return (
-    <header className="cyber-box flex justify-between items-center mb-6">
+    <header className="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow-sm border border-cyber-border">
       <div className="flex items-center">
         <Server className="h-6 w-6 mr-3 text-cyber-primary" />
         <div>
           <h1 className="text-2xl font-bold mr-4 cyber-text cyber-glow">NetTracer Pro</h1>
-          <span className="text-sm text-cyber-secondary">Advanced Network Analysis System</span>
+          <span className="text-sm text-gray-600">Advanced Network Analysis System</span>
         </div>
       </div>
+
+      <div className="hidden md:flex items-center space-x-2">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" className="border-cyber-primary text-cyber-primary hover:bg-cyber-primary hover:bg-opacity-10">
+                <Activity className="w-4 h-4 mr-2" />
+                System Status
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>View system performance metrics</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" className="border-cyber-secondary text-cyber-secondary hover:bg-cyber-secondary hover:bg-opacity-10">
+                <HelpCircle className="w-4 h-4 mr-2" />
+                Support
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Get help with the application</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" className="border-cyber-accent text-cyber-accent hover:bg-cyber-accent hover:bg-opacity-10">
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Chat
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Chat with AI assistant</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      
       <div className="flex items-center gap-4">
         <div className="flex items-center">
           <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse-glow mr-2"></span>
-          <span className="text-xs">SYSTEM ONLINE</span>
+          <span className="text-xs text-gray-600">SYSTEM ONLINE</span>
         </div>
-        <Button variant="outline" size="sm" className="border-cyber-primary text-cyber-primary hover:bg-cyber-primary hover:bg-opacity-20">
-          <Activity className="w-4 h-4 mr-2" />
-          System Status
-        </Button>
-        <Button variant="outline" size="sm" className="border-cyber-secondary text-cyber-secondary hover:bg-cyber-secondary hover:bg-opacity-20">
-          <AlertCircle className="w-4 h-4 mr-2" />
-          Network Health
-        </Button>
+        
+        <div className="flex items-center space-x-2 border-l pl-4 border-cyber-border">
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={authorDetails.avatar} alt={authorDetails.name} />
+            <AvatarFallback>DV</AvatarFallback>
+          </Avatar>
+          <div className="hidden md:block">
+            <p className="text-sm font-medium">{authorDetails.name}</p>
+            <p className="text-xs text-gray-500">{authorDetails.title}</p>
+          </div>
+          <a href={authorDetails.linkedin} target="_blank" rel="noopener noreferrer" className="text-cyber-primary">
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        </div>
       </div>
     </header>
   );
