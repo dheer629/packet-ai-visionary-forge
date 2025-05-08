@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Server, Activity, User, HelpCircle, ExternalLink, MessageCircle } from 'lucide-react';
+import { Server, Activity, User, HelpCircle, MessageCircle, Linkedin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -8,10 +8,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 const Header = () => {
   const authorDetails = {
     name: "Dheeraj Vishwakarma",
-    title: "Senior Machine Learning Engineer",
+    title: "Senior Architect",
     avatar: "https://aimldheeraj.netlify.app/assets/img/hero-img.jpg",
-    linkedin: "https://www.linkedin.com/in/dheeraj-vishwakarma-61350918/",
-    experience: "10+ years in AI & ML Engineering"
+    linkedin: "https://www.linkedin.com/in/dheeraj-vishwakarma-61350918/"
   };
 
   return (
@@ -19,8 +18,8 @@ const Header = () => {
       <div className="flex items-center">
         <Server className="h-6 w-6 mr-3 text-cyber-primary" />
         <div>
-          <h1 className="text-2xl font-bold mr-4 cyber-text cyber-glow">NetTracer Pro</h1>
-          <span className="text-sm text-gray-600">Advanced Network Analysis System</span>
+          <h1 className="text-2xl font-bold mr-4 cyber-text cyber-glow">NetTracer Pro ✨</h1>
+          <span className="text-sm text-gray-600">Advanced Network Analysis System 🛡️</span>
         </div>
       </div>
 
@@ -71,20 +70,20 @@ const Header = () => {
       <div className="flex items-center gap-4">
         <div className="flex items-center">
           <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse-glow mr-2"></span>
-          <span className="text-xs text-gray-600">SYSTEM ONLINE</span>
+          <span className="text-xs text-gray-600">SYSTEM ONLINE 🟢</span>
         </div>
         
         <div className="flex items-center space-x-2 border-l pl-4 border-cyber-border">
-          <Avatar className="h-9 w-9">
+          <Avatar className="h-9 w-9 ring-2 ring-blue-200">
             <AvatarImage src={authorDetails.avatar} alt={authorDetails.name} />
             <AvatarFallback>DV</AvatarFallback>
           </Avatar>
           <div className="hidden md:block">
-            <p className="text-sm font-medium">{authorDetails.name}</p>
-            <p className="text-xs text-gray-500">{authorDetails.title}</p>
+            <p className="text-sm font-medium">{authorDetails.name} ✅</p>
+            <p className="text-xs text-blue-600 font-medium">{authorDetails.title}</p>
           </div>
-          <a href={authorDetails.linkedin} target="_blank" rel="noopener noreferrer" className="text-cyber-primary">
-            <ExternalLink className="h-4 w-4" />
+          <a href={authorDetails.linkedin} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 transition-colors">
+            <Linkedin className="h-4 w-4" />
           </a>
         </div>
       </div>
