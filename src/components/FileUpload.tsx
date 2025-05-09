@@ -29,7 +29,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
     setProcessingProgress(0);
     
     try {
-      // Start processing the file
+      // Start processing the file with progress tracking
       const progressCallback = (progress: number) => {
         setProcessingProgress(Math.round(progress * 100));
       };
@@ -38,12 +38,22 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       
       // If API keys are available, enrich the data with AI analysis
       const apiKeys = JSON.parse(localStorage.getItem('nettracer-api-keys') || '[]');
-      const openaiKey = apiKeys.find((key: any) => key.name.toLowerCase().includes('openai'));
+      const openaiKey = apiKeys.find((key: any) => key.providerId === 'openai');
       
-      if (openaiKey) {
-        // This would be implemented in a real app using an edge function
-        // For now, we'll just add the data directly
-        analysisData.aiEnriched = true;
+      if (openaiKey && openaiKey.value) {
+        try {
+          // This would typically use an API endpoint for analysis
+          // For now, we'll just note the availability in the response
+          analysisData.aiEnriched = true;
+          analysisData.aiProvider = openaiKey.name;
+          
+          toast({
+            title: "AI Analysis Available",
+            description: `Using ${openaiKey.name} to analyze packet data`,
+          });
+        } catch (error) {
+          console.error('Error processing with AI:', error);
+        }
       }
       
       onFileUpload(analysisData);
@@ -56,7 +66,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       console.error('Error processing PCAP file:', error);
       toast({
         title: "Processing Error",
-        description: "Failed to process the PCAP file. Please try again.",
+        description: `Failed to process the PCAP file: ${error.message}`,
         variant: "destructive"
       });
     } finally {

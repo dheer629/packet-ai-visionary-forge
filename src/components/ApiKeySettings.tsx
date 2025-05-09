@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { Key, Info, Check, X } from 'lucide-react';
+import { Key, Info, Check, X, RefreshCw } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { modelProviders, ModelProvider, fetchAvailableModels, ModelOption } from '../services/modelProviders';
@@ -27,11 +27,11 @@ const ApiKeySettings = () => {
     const savedKeys = localStorage.getItem('nettracer-api-keys');
     return savedKeys ? JSON.parse(savedKeys) : [];
   });
-  const [newKeyName, setNewKeyName] = useState('');
   const [newKeyValue, setNewKeyValue] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<string>('openai');
   const [testingConnection, setTestingConnection] = useState(false);
   const [availableModels, setAvailableModels] = useState<Record<string, ModelOption[]>>({});
+  const [isFetchingModels, setIsFetchingModels] = useState<Record<string, boolean>>({});
   
   useEffect(() => {
     localStorage.setItem('nettracer-api-keys', JSON.stringify(apiKeys));
@@ -41,6 +41,12 @@ const ApiKeySettings = () => {
   useEffect(() => {
     const loadModelsForExistingKeys = async () => {
       const modelsMap: Record<string, ModelOption[]> = {};
+      const fetchingMap: Record<string, boolean> = {};
+      
+      for (const key of apiKeys) {
+        fetchingMap[key.id] = true;
+        setIsFetchingModels(prev => ({...prev, [key.id]: true}));
+      }
       
       for (const key of apiKeys) {
         try {
@@ -48,14 +54,19 @@ const ApiKeySettings = () => {
           modelsMap[key.id] = models;
         } catch (error) {
           console.error(`Failed to load models for ${key.name}:`, error);
+        } finally {
+          fetchingMap[key.id] = false;
+          setIsFetchingModels(prev => ({...prev, [key.id]: false}));
         }
       }
       
       setAvailableModels(modelsMap);
     };
     
-    loadModelsForExistingKeys();
-  }, [apiKeys]);
+    if (apiKeys.length > 0) {
+      loadModelsForExistingKeys();
+    }
+  }, []);
 
   const testApiConnection = async () => {
     if (!selectedProvider || !newKeyValue) {
@@ -93,7 +104,7 @@ const ApiKeySettings = () => {
       console.error("API connection test error:", error);
       toast({
         title: "Connection Error",
-        description: "An error occurred while testing the connection",
+        description: `An error occurred while testing the connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive"
       });
       return false;
@@ -119,30 +130,71 @@ const ApiKeySettings = () => {
     const isValid = await testApiConnection();
     if (!isValid) return;
     
-    // Fetch available models
-    const models = await fetchAvailableModels(selectedProvider, newKeyValue);
-    const defaultModel = models.find(m => m.available)?.id;
+    // Check if key with this provider already exists
+    const existingKey = apiKeys.find(key => key.providerId === selectedProvider);
+    if (existingKey) {
+      // Update the existing key
+      const updatedKeys = apiKeys.map(key => {
+        if (key.providerId === selectedProvider) {
+          return {
+            ...key,
+            value: newKeyValue,
+            lastUsed: undefined
+          };
+        }
+        return key;
+      });
+      
+      setApiKeys(updatedKeys);
+      
+      toast({
+        title: "API Key Updated",
+        description: `${provider.name} API key has been updated.`
+      });
+      
+      // Refresh models for this key
+      refreshModels(existingKey.id);
+    } else {
+      // Add new key
+      const newKeyId = Date.now().toString();
+      
+      setIsFetchingModels(prev => ({...prev, [newKeyId]: true}));
+      
+      try {
+        // Fetch available models
+        const models = await fetchAvailableModels(selectedProvider, newKeyValue);
+        const defaultModel = models.find(m => m.available)?.id;
+        
+        const newKey: ApiKey = {
+          id: newKeyId,
+          providerId: selectedProvider,
+          name: provider.name,
+          value: newKeyValue,
+          models: models,
+          selectedModel: defaultModel,
+          lastUsed: undefined
+        };
+        
+        setApiKeys([...apiKeys, newKey]);
+        setAvailableModels({...availableModels, [newKey.id]: models});
+        
+        toast({
+          title: "API Key Added",
+          description: `${provider.name} API key has been added successfully.`
+        });
+      } catch (error) {
+        console.error('Error fetching models:', error);
+        toast({
+          title: "Warning",
+          description: "API key added but failed to fetch available models.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsFetchingModels(prev => ({...prev, [newKeyId]: false}));
+      }
+    }
     
-    const newKey: ApiKey = {
-      id: Date.now().toString(),
-      providerId: selectedProvider,
-      name: provider.name,
-      value: newKeyValue,
-      models: models,
-      selectedModel: defaultModel,
-      lastUsed: undefined
-    };
-    
-    setApiKeys([...apiKeys, newKey]);
-    setAvailableModels({...availableModels, [newKey.id]: models});
-    setNewKeyName('');
     setNewKeyValue('');
-    setSelectedProvider('openai');
-    
-    toast({
-      title: "API Key Added",
-      description: `${provider.name} API key has been added successfully.`
-    });
   };
   
   const deleteApiKey = (id: string) => {
@@ -161,6 +213,8 @@ const ApiKeySettings = () => {
     const key = apiKeys.find(k => k.id === keyId);
     if (!key) return;
     
+    setIsFetchingModels(prev => ({...prev, [keyId]: true}));
+    
     try {
       const models = await fetchAvailableModels(key.providerId, key.value);
       setAvailableModels({...availableModels, [keyId]: models});
@@ -168,7 +222,14 @@ const ApiKeySettings = () => {
       // Update the API key with new models
       setApiKeys(apiKeys.map(k => {
         if (k.id === keyId) {
-          return {...k, models: models};
+          return {
+            ...k, 
+            models, 
+            // If current selected model is not available, select first available
+            selectedModel: models.some(m => m.id === k.selectedModel && m.available) 
+              ? k.selectedModel 
+              : models.find(m => m.available)?.id || k.selectedModel
+          };
         }
         return k;
       }));
@@ -184,6 +245,8 @@ const ApiKeySettings = () => {
         description: "Could not retrieve available models",
         variant: "destructive"
       });
+    } finally {
+      setIsFetchingModels(prev => ({...prev, [keyId]: false}));
     }
   };
 
@@ -200,7 +263,7 @@ const ApiKeySettings = () => {
     if (key.length < 8) return '•'.repeat(key.length);
     return key.substring(0, 4) + '•'.repeat(key.length - 8) + key.substring(key.length - 4);
   };
-
+  
   return (
     <>
       <Button 
@@ -216,7 +279,7 @@ const ApiKeySettings = () => {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>API Key Management</DialogTitle>
+            <DialogTitle>AI Provider API Keys</DialogTitle>
           </DialogHeader>
           
           <ScrollArea className="max-h-[70vh]">
@@ -225,6 +288,7 @@ const ApiKeySettings = () => {
                 <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                 <p className="text-blue-700">
                   Connect to AI services by adding API keys for various providers. The system will automatically detect available models for each provider.
+                  API keys are stored in your browser's local storage and are never sent to our servers.
                 </p>
               </div>
               
@@ -276,7 +340,7 @@ const ApiKeySettings = () => {
                   className="w-full"
                   disabled={testingConnection || !selectedProvider || !newKeyValue}
                 >
-                  Add API Key
+                  {apiKeys.some(key => key.providerId === selectedProvider) ? 'Update API Key' : 'Add API Key'}
                 </Button>
               </div>
               
@@ -313,12 +377,25 @@ const ApiKeySettings = () => {
                               size="sm" 
                               onClick={() => refreshModels(key.id)}
                               className="text-xs flex items-center gap-1"
+                              disabled={isFetchingModels[key.id]}
                             >
-                              Refresh
+                              {isFetchingModels[key.id] ? (
+                                <>
+                                  <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                                  Loading...
+                                </>
+                              ) : (
+                                <>Refresh</>
+                              )}
                             </Button>
                           </div>
                           
-                          {availableModels[key.id]?.length ? (
+                          {isFetchingModels[key.id] ? (
+                            <div className="text-center py-4 text-sm text-gray-500">
+                              <RefreshCw className="h-4 w-4 animate-spin mx-auto mb-2" />
+                              Fetching available models...
+                            </div>
+                          ) : availableModels[key.id]?.length ? (
                             <div className="space-y-3">
                               <Select 
                                 value={key.selectedModel || ''} 

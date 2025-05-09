@@ -1,3 +1,4 @@
+
 /**
  * Process a PCAP file and extract network data in a browser environment
  */
@@ -7,35 +8,22 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
     
     reader.onload = async (event) => {
       try {
-        // Simulating processing time for demonstration
-        const totalSteps = 5;
+        // Start processing - report 10% progress
+        progressCallback?.(0.1);
         
-        // Step 1: Parse file header
-        await simulateProcessingStep(20);
-        progressCallback?.(1/totalSteps);
-        
-        // Step 2: Parse packets
-        await simulateProcessingStep(30);
-        progressCallback?.(2/totalSteps);
-        
-        // Step 3: Extract metadata
-        await simulateProcessingStep(20);
-        progressCallback?.(3/totalSteps);
-        
-        // Step 4: Analyze network data
-        await simulateProcessingStep(40);
-        progressCallback?.(4/totalSteps);
-        
-        // Step 5: Generate summary
-        await simulateProcessingStep(30);
-        progressCallback?.(5/totalSteps);
-        
-        // In a real implementation, we would actually parse the binary data
-        // For now, we process the binary data directly in the browser
+        // Get the binary data from the file
         const buffer = event.target?.result as ArrayBuffer;
-        const analysisData = await processPcapBuffer(file.name, buffer);
+        
+        // Process the PCAP data
+        progressCallback?.(0.3);
+        const analysisData = await parseActualPcapData(file.name, buffer);
+        
+        // Complete processing
+        progressCallback?.(1.0);
+        
         resolve(analysisData);
       } catch (error) {
+        console.error('Error processing PCAP file:', error);
         reject(error);
       }
     };
@@ -50,491 +38,493 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
 };
 
 /**
- * Helper function to simulate processing time
+ * Parse actual PCAP binary data in the browser
  */
-const simulateProcessingStep = (ms: number): Promise<void> => {
-  return new Promise(resolve => setTimeout(resolve, ms));
-};
-
-/**
- * Process PCAP buffer data directly in the browser
- */
-const processPcapBuffer = async (filename: string, buffer: ArrayBuffer): Promise<any> => {
+const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promise<any> => {
   // Create a DataView to read binary data
   const dataView = new DataView(buffer);
+  const fileSize = buffer.byteLength;
   
   try {
-    // Parse PCAP file header (24 bytes)
-    // Standard PCAP global header format:
-    // - Magic number (4 bytes)
-    // - Version major, minor (2 bytes each)
-    // - Timezone correction (4 bytes)
-    // - Timestamp accuracy (4 bytes)
-    // - Snapshot length (4 bytes)
-    // - Link-layer header type (4 bytes)
-    
-    // Check magic number to determine endianness
+    // PCAP Global Header - first 24 bytes
+    // Verify magic number (first 4 bytes)
     const magicNumber = dataView.getUint32(0, false);
-    let littleEndian = true;
+    const isLittleEndian = magicNumber === 0xd4c3b2a1;
+    const isBigEndian = magicNumber === 0xa1b2c3d4;
+    const isPcapNg = magicNumber === 0x0a0d0d0a;
     
-    // Standard PCAP magic number is 0xa1b2c3d4 (or reversed for big endian)
-    if (magicNumber !== 0xd4c3b2a1) {
-      if (magicNumber === 0xa1b2c3d4) {
-        littleEndian = false;
-      } else if (magicNumber === 0x4d3cb2a1) {
-        // PCAPNG format - which would require different parsing
-        return processSimulatedData(filename, buffer);
-      } else {
-        // Unknown format, return simulated data
-        return processSimulatedData(filename, buffer);
-      }
+    if (!isLittleEndian && !isBigEndian && !isPcapNg) {
+      throw new Error('Invalid PCAP file format');
     }
     
-    // For demonstration, return simulated data since full PCAP parsing
-    // is complex and would require implementing the entire PCAP format spec
-    return processSimulatedData(filename, buffer);
+    if (isPcapNg) {
+      return parsePcapNgFormat(dataView, fileSize, filename);
+    }
     
+    // Parse standard PCAP format
+    const versionMajor = dataView.getUint16(4, isLittleEndian);
+    const versionMinor = dataView.getUint16(6, isLittleEndian);
+    const timezone = dataView.getInt32(8, isLittleEndian);
+    const sigfigs = dataView.getUint32(12, isLittleEndian);
+    const snaplen = dataView.getUint32(16, isLittleEndian);
+    const network = dataView.getUint32(20, isLittleEndian);
+    
+    // Packet parsing starts at byte 24
+    const packets = [];
+    let offset = 24;
+    let packetCount = 0;
+    const ipAddresses = new Set();
+    const protocolCounts: Record<string, number> = {};
+    const conversations = new Map();
+    const packetSizes = [];
+    let minTimestamp = Number.MAX_VALUE;
+    let maxTimestamp = 0;
+    
+    while (offset < buffer.byteLength - 16) {
+      // PCAP Packet Header - 16 bytes
+      const tsSec = dataView.getUint32(offset, isLittleEndian);
+      const tsUsec = dataView.getUint32(offset + 4, isLittleEndian);
+      const inclLen = dataView.getUint32(offset + 8, isLittleEndian);
+      const origLen = dataView.getUint32(offset + 12, isLittleEndian);
+      
+      // Calculate timestamp in seconds
+      const timestamp = tsSec + tsUsec / 1000000;
+      minTimestamp = Math.min(minTimestamp, timestamp);
+      maxTimestamp = Math.max(maxTimestamp, timestamp);
+      
+      // Move to packet data
+      offset += 16;
+      
+      // Parse Ethernet frame
+      if (offset + inclLen <= buffer.byteLength) {
+        // Parse Ethernet header (14 bytes)
+        const destMac = formatMacAddress(new Uint8Array(buffer, offset, 6));
+        const srcMac = formatMacAddress(new Uint8Array(buffer, offset + 6, 6));
+        const etherType = dataView.getUint16(offset + 12, isLittleEndian);
+        
+        // Only process IPv4 packets (EtherType 0x0800)
+        if (etherType === 0x0800 && offset + 14 + 20 <= buffer.byteLength) {
+          // Parse IPv4 header
+          const ipVer = (dataView.getUint8(offset + 14) >> 4) & 0xF; // Should be 4 for IPv4
+          if (ipVer === 4) {
+            const ipHeaderLength = (dataView.getUint8(offset + 14) & 0x0F) * 4;
+            const protocol = dataView.getUint8(offset + 14 + 9);
+            const sourceIP = formatIPv4(dataView, offset + 14 + 12);
+            const destIP = formatIPv4(dataView, offset + 14 + 16);
+            
+            // Add IPs to set
+            ipAddresses.add(sourceIP);
+            ipAddresses.add(destIP);
+            
+            // Get protocol name
+            let protocolName = getProtocolName(protocol);
+            protocolCounts[protocolName] = (protocolCounts[protocolName] || 0) + 1;
+            
+            // Start building packet details
+            const packetDetails: any = {
+              number: packetCount + 1,
+              time: (timestamp - minTimestamp).toFixed(6),
+              source: sourceIP,
+              destination: destIP,
+              protocol: protocolName,
+              length: inclLen,
+              info: '',
+              ethernet: {
+                destMac,
+                srcMac,
+                type: `0x${etherType.toString(16).padStart(4, '0')} (IPv${ipVer})`
+              },
+              ip: {
+                version: ipVer,
+                headerLength: `${ipHeaderLength} bytes`,
+                ttl: dataView.getUint8(offset + 14 + 8),
+                protocol: `${protocolName} (${protocol})`,
+                source: sourceIP,
+                destination: destIP
+              },
+              layers: ["Ethernet", "IPv4", protocolName]
+            };
+            
+            // Add protocol-specific details
+            const ipHeaderEnd = offset + 14 + ipHeaderLength;
+            
+            if (protocol === 6 && ipHeaderEnd + 20 <= offset + inclLen) {
+              // TCP
+              const srcPort = dataView.getUint16(ipHeaderEnd, isLittleEndian);
+              const dstPort = dataView.getUint16(ipHeaderEnd + 2, isLittleEndian);
+              const seqNum = dataView.getUint32(ipHeaderEnd + 4, isLittleEndian);
+              const ackNum = dataView.getUint32(ipHeaderEnd + 8, isLittleEndian);
+              const tcpOffset = ((dataView.getUint8(ipHeaderEnd + 12) >> 4) & 0xF) * 4;
+              const flags = dataView.getUint8(ipHeaderEnd + 13);
+              const flagsStr = getTcpFlags(flags);
+              const windowSize = dataView.getUint16(ipHeaderEnd + 14, isLittleEndian);
+              
+              // Update source and destination with ports
+              packetDetails.source = `${sourceIP}:${srcPort}`;
+              packetDetails.destination = `${destIP}:${dstPort}`;
+              
+              // Add TCP details
+              packetDetails.tcp = {
+                srcPort,
+                dstPort,
+                seq: seqNum,
+                ack: ackNum,
+                flags: flagsStr,
+                window: windowSize
+              };
+              
+              // Set info field
+              packetDetails.info = `${srcPort} → ${dstPort} [${flagsStr}] Seq=${seqNum} Ack=${ackNum} Win=${windowSize}`;
+              
+              // Check if this is HTTP based on port
+              if (srcPort === 80 || dstPort === 80) {
+                packetDetails.protocol = 'HTTP';
+                packetDetails.layers.push('HTTP');
+                protocolCounts['HTTP'] = (protocolCounts['HTTP'] || 0) + 1;
+              } else if (srcPort === 443 || dstPort === 443) {
+                packetDetails.protocol = 'HTTPS';
+                packetDetails.layers.push('TLS');
+                protocolCounts['HTTPS'] = (protocolCounts['HTTPS'] || 0) + 1;
+              }
+              
+              // Record conversation
+              const conversationKey = sourceIP < destIP 
+                ? `${sourceIP}:${srcPort}-${destIP}:${dstPort}` 
+                : `${destIP}:${dstPort}-${sourceIP}:${srcPort}`;
+              
+              if (!conversations.has(conversationKey)) {
+                conversations.set(conversationKey, {
+                  endpointA: `${sourceIP}:${srcPort}`,
+                  endpointB: `${destIP}:${dstPort}`,
+                  protocol: packetDetails.protocol,
+                  packetCount: 1,
+                  bytes: inclLen,
+                  startTime: timestamp,
+                  endTime: timestamp
+                });
+              } else {
+                const conv = conversations.get(conversationKey);
+                conv.packetCount++;
+                conv.bytes += inclLen;
+                conv.endTime = timestamp;
+              }
+              
+            } else if (protocol === 17 && ipHeaderEnd + 8 <= offset + inclLen) {
+              // UDP
+              const srcPort = dataView.getUint16(ipHeaderEnd, isLittleEndian);
+              const dstPort = dataView.getUint16(ipHeaderEnd + 2, isLittleEndian);
+              const length = dataView.getUint16(ipHeaderEnd + 4, isLittleEndian);
+              
+              // Update source and destination with ports
+              packetDetails.source = `${sourceIP}:${srcPort}`;
+              packetDetails.destination = `${destIP}:${dstPort}`;
+              
+              // Add UDP details
+              packetDetails.udp = {
+                srcPort,
+                dstPort,
+                length
+              };
+              
+              // Set info field
+              packetDetails.info = `${srcPort} → ${dstPort} Len=${length}`;
+              
+              // Check if this is DNS based on port
+              if (srcPort === 53 || dstPort === 53) {
+                packetDetails.protocol = 'DNS';
+                packetDetails.layers.push('DNS');
+                protocolCounts['DNS'] = (protocolCounts['DNS'] || 0) + 1;
+              }
+              
+              // Record conversation
+              const conversationKey = sourceIP < destIP 
+                ? `${sourceIP}:${srcPort}-${destIP}:${dstPort}` 
+                : `${destIP}:${dstPort}-${sourceIP}:${srcPort}`;
+              
+              if (!conversations.has(conversationKey)) {
+                conversations.set(conversationKey, {
+                  endpointA: `${sourceIP}:${srcPort}`,
+                  endpointB: `${destIP}:${dstPort}`,
+                  protocol: packetDetails.protocol,
+                  packetCount: 1,
+                  bytes: inclLen,
+                  startTime: timestamp,
+                  endTime: timestamp
+                });
+              } else {
+                const conv = conversations.get(conversationKey);
+                conv.packetCount++;
+                conv.bytes += inclLen;
+                conv.endTime = timestamp;
+              }
+              
+            } else if (protocol === 1) {
+              // ICMP
+              if (ipHeaderEnd + 2 <= offset + inclLen) {
+                const type = dataView.getUint8(ipHeaderEnd);
+                const code = dataView.getUint8(ipHeaderEnd + 1);
+                
+                // Add ICMP details
+                packetDetails.icmp = {
+                  type,
+                  code,
+                  name: getIcmpTypeName(type, code)
+                };
+                
+                // Set info field
+                packetDetails.info = getIcmpTypeName(type, code);
+              } else {
+                packetDetails.info = 'Incomplete ICMP packet';
+              }
+            } else {
+              packetDetails.info = `Protocol ${protocol}`;
+            }
+            
+            // Add hex dump
+            const hexStart = Math.min(offset, offset + inclLen - 48); // Get at most 48 bytes
+            packetDetails.hexDump = createHexDump(new Uint8Array(buffer, hexStart, Math.min(48, inclLen)));
+            
+            // Store packet size for statistics
+            packetSizes.push(inclLen);
+            
+            // Add packet to the list (limit to 1000 for browser performance)
+            if (packetCount < 1000) {
+              packets.push(packetDetails);
+            }
+            packetCount++;
+          }
+        }
+      }
+      
+      // Move to next packet
+      offset += inclLen;
+    }
+    
+    // Calculate statistics
+    const avgPacketSize = packetSizes.length > 0 
+      ? packetSizes.reduce((sum, size) => sum + size, 0) / packetSizes.length 
+      : 0;
+    
+    // Sort packet sizes for median calculation
+    packetSizes.sort((a, b) => a - b);
+    const medianPacketSize = packetSizes.length > 0 
+      ? packetSizes[Math.floor(packetSizes.length / 2)]
+      : 0;
+    
+    // Convert protocol counts to array for chart
+    const protocolData = Object.entries(protocolCounts).map(([name, value]) => ({
+      name,
+      value
+    }));
+    
+    // Generate time series data
+    const duration = maxTimestamp - minTimestamp;
+    const timeSeriesData = generateTimeSeriesData(packets, duration);
+    
+    // Format conversations with duration
+    const conversationsArray = Array.from(conversations.values()).map(conv => {
+      return {
+        ...conv,
+        duration: `${(conv.endTime - conv.startTime).toFixed(2)} sec`
+      };
+    });
+    
+    return {
+      filename,
+      size: fileSize,
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalPackets: packetCount,
+        ipAddresses: ipAddresses.size,
+        conversationCount: conversations.size,
+        tcpPackets: protocolCounts['TCP'] || 0,
+        udpPackets: protocolCounts['UDP'] || 0,
+        icmpPackets: protocolCounts['ICMP'] || 0,
+        otherPackets: packetCount - ((protocolCounts['TCP'] || 0) + (protocolCounts['UDP'] || 0) + (protocolCounts['ICMP'] || 0)),
+        avgPacketSize: Math.round(avgPacketSize),
+        medianPacketSize,
+        minPacketSize: packetSizes[0] || 0,
+        maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
+        captureDuration: formatDuration(duration),
+        packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
+      },
+      packets,
+      protocols: Object.keys(protocolCounts),
+      protocolData,
+      timeSeriesData,
+      ipAddresses: Array.from(ipAddresses),
+      conversations: conversationsArray,
+      pcapVersion: `${versionMajor}.${versionMinor}`,
+      pcapInfo: {
+        timezone,
+        sigfigs,
+        snaplen,
+        network,
+        isLittleEndian
+      }
+    };
   } catch (error) {
-    console.error('Error processing PCAP binary data:', error);
-    // Fallback to simulated data
-    return processSimulatedData(filename, buffer);
+    console.error('Error parsing PCAP data:', error);
+    throw new Error(`Failed to parse PCAP file: ${error.message}`);
   }
 };
 
 /**
- * Generate structured analysis data from a PCAP binary buffer
- * This is a fallback for files we can't fully parse in the browser
+ * Parse PCAP-NG format files
  */
-const processSimulatedData = async (filename: string, buffer: ArrayBuffer): Promise<any> => {
-  // Get file size
-  const fileSize = buffer.byteLength;
-  
-  // For demonstration, we'll generate realistic-looking analysis data
-  // based on common patterns in network traffic
-  
-  // The number of packets is typically related to file size
-  // Let's assume an average packet size of 500-1500 bytes
-  const avgPacketSize = 800;
-  const estimatedPackets = Math.floor(fileSize / avgPacketSize);
-  
-  // Generate random but realistic protocols distribution
-  const protocols = ['TCP', 'UDP', 'HTTP', 'DNS', 'HTTPS', 'ICMP', 'ARP'];
-  const selectedProtocols = protocols.slice(0, Math.min(3 + Math.floor(Math.random() * 4), protocols.length));
-  
-  // Generate a list of random but realistic-looking IP addresses
-  const ipAddresses = generateRandomIpAddresses(10 + Math.floor(Math.random() * 15));
-  
-  // Generate conversation count (typically less than the number of IPs)
-  const conversationCount = Math.max(5, Math.floor(ipAddresses.length * 0.7));
-  
-  // Generate a list of mock packets for display
-  const packetList = generateMockPacketsList(estimatedPackets, ipAddresses, selectedProtocols);
-  
-  // Calculate protocol distribution
-  const protocolDistribution = calculateProtocolDistribution(packetList);
-  
-  // Calculate time-based statistics
-  const { timeSeriesData, ...timeStats } = calculateTimeBasedStats(packetList);
-  
+const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: string) => {
+  console.log('Detected PCAP-NG format');
+  // Implementation would be complex and out of scope for this task
+  // Return basic information about the file format
   return {
-    filename: filename,
+    filename,
     size: fileSize,
     timestamp: new Date().toISOString(),
     summary: {
-      totalPackets: estimatedPackets,
-      ipAddresses: ipAddresses.length,
-      conversationCount: conversationCount,
-      tcpPackets: Math.floor(estimatedPackets * 0.65),
-      udpPackets: Math.floor(estimatedPackets * 0.25),
-      icmpPackets: Math.floor(estimatedPackets * 0.05),
-      otherPackets: Math.floor(estimatedPackets * 0.05),
-      avgPacketSize: calculateAveragePacketSize(packetList),
-      medianPacketSize: calculateMedianPacketSize(packetList),
-      minPacketSize: Math.min(...packetList.map(p => p.length)),
-      maxPacketSize: Math.max(...packetList.map(p => p.length)),
-      captureDuration: formatDuration(timeStats.duration),
-      packetsPerSecond: (estimatedPackets / timeStats.duration).toFixed(1),
-      busiestSecond: timeStats.busiestSecond,
-      busiestSecondCount: timeStats.busiestSecondCount,
-      internalIPs: Math.floor(ipAddresses.length * 0.3),
-      externalIPs: Math.floor(ipAddresses.length * 0.7),
-      ipv4Count: Math.floor(ipAddresses.length * 0.9),
-      ipv6Count: Math.floor(ipAddresses.length * 0.1),
-      fragmentedPackets: Math.floor(estimatedPackets * 0.01),
-      retransmissions: Math.floor(estimatedPackets * 0.02),
-      duplicateAcks: Math.floor(estimatedPackets * 0.015),
-      zeroWindow: Math.floor(estimatedPackets * 0.005),
-      tcpConversations: Math.floor(conversationCount * 0.7),
-      udpConversations: Math.floor(conversationCount * 0.25),
-      otherConversations: Math.floor(conversationCount * 0.05),
-      avgConversationDuration: "2.84s",
-      avgPacketsPerConversation: Math.floor(estimatedPackets / conversationCount),
-      avgBytesPerConversation: formatBytes(fileSize / conversationCount),
+      format: 'PCAP-NG',
+      note: 'PCAP-NG parsing is limited in browser environments'
     },
-    packets: packetList,
-    protocols: selectedProtocols,
-    protocolData: protocolDistribution,
-    timeSeriesData: timeSeriesData,
-    ipAddresses: ipAddresses,
-    conversations: generateConversations(ipAddresses, selectedProtocols, conversationCount),
+    packets: [],
+    protocols: [],
+    protocolData: [],
+    timeSeriesData: [],
+    ipAddresses: [],
+    conversations: []
   };
 };
 
 /**
- * Generate a list of random IP addresses
+ * Format a MAC address from a byte array
  */
-const generateRandomIpAddresses = (count: number): string[] => {
-  const result: string[] = [];
-  
-  // Add some common internal IPs
-  result.push('192.168.1.1');
-  result.push('192.168.1.5');
-  result.push('10.0.0.1');
-  
-  // Add some common external IPs
-  result.push('8.8.8.8');
-  result.push('1.1.1.1');
-  
-  // Generate random IPs to reach the count
-  while (result.length < count) {
-    if (Math.random() > 0.7) {
-      // Internal IP
-      const segment = Math.random() > 0.5 ? '192.168' : '10';
-      const ip = segment === '192.168' 
-        ? `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
-        : `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
-      if (!result.includes(ip)) result.push(ip);
-    } else {
-      // External IP
-      const ip = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
-      if (!result.includes(ip)) result.push(ip);
-    }
-  }
-  
-  return result;
+const formatMacAddress = (bytes: Uint8Array): string => {
+  return Array.from(bytes)
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join(':');
 };
 
 /**
- * Generate a list of mock packets
+ * Format an IPv4 address from DataView at specified offset
  */
-const generateMockPacketsList = (packetCount: number, ipAddresses: string[], protocols: string[]): any[] => {
-  const packets = [];
-  let currentTime = 0;
-  
-  for (let i = 0; i < Math.min(packetCount, 1000); i++) {
-    const sourceIndex = Math.floor(Math.random() * ipAddresses.length);
-    
-    // Ensure destination is different from source
-    let destIndex;
-    do {
-      destIndex = Math.floor(Math.random() * ipAddresses.length);
-    } while (destIndex === sourceIndex);
-    
-    const protocol = protocols[Math.floor(Math.random() * protocols.length)];
-    const length = 64 + Math.floor(Math.random() * 1436); // Between 64 and 1500 bytes
-    
-    // Generate realistic timestamp
-    currentTime += Math.random() * 0.01;
-    
-    // Generate packet info based on protocol
-    let info = "";
-    let srcPort = 0;
-    let dstPort = 0;
-    
-    switch (protocol) {
-      case "TCP":
-        srcPort = 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 80 : 443;
-        const flags = Math.random() > 0.8 
-          ? "SYN" 
-          : Math.random() > 0.7 
-            ? "SYN, ACK" 
-            : Math.random() > 0.6 
-              ? "ACK" 
-              : "PSH, ACK";
-        const seq = Math.floor(Math.random() * 1000000000);
-        const ack = flags.includes("ACK") ? Math.floor(Math.random() * 1000000000) : 0;
-        const win = 8192 + Math.floor(Math.random() * 57000);
-        info = `${flags} Seq=${seq}${ack > 0 ? ` Ack=${ack}` : ''} Win=${win}`;
-        break;
-        
-      case "UDP":
-        srcPort = 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 53 : 5353;
-        info = `${srcPort} → ${dstPort} Len=${length - 42}`;
-        break;
-        
-      case "HTTP":
-        srcPort = Math.random() > 0.5 ? 80 : 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 80 : 1024 + Math.floor(Math.random() * 64000);
-        info = Math.random() > 0.5 
-          ? `GET / HTTP/1.1` 
-          : `HTTP/1.1 200 OK (text/html)`;
-        break;
-        
-      case "DNS":
-        srcPort = Math.random() > 0.5 ? 53 : 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 53 : 1024 + Math.floor(Math.random() * 64000);
-        const queryId = Math.floor(Math.random() * 65535).toString(16).padStart(4, '0');
-        info = Math.random() > 0.5 
-          ? `Standard query 0x${queryId} A example.com` 
-          : `Standard query response 0x${queryId} A 93.184.216.34`;
-        break;
-        
-      case "HTTPS":
-        srcPort = Math.random() > 0.5 ? 443 : 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 443 : 1024 + Math.floor(Math.random() * 64000);
-        info = "Application Data";
-        break;
-        
-      case "ICMP":
-        info = Math.random() > 0.5 ? "Echo (ping) request" : "Echo (ping) reply";
-        break;
-        
-      case "ARP":
-        info = Math.random() > 0.5 
-          ? `Who has ${ipAddresses[destIndex]}? Tell ${ipAddresses[sourceIndex]}` 
-          : `${ipAddresses[sourceIndex]} is at 00:1A:2B:3C:4D:5E`;
-        break;
-        
-      default:
-        info = "Packet data";
-    }
-    
-    packets.push({
-      number: i + 1,
-      time: currentTime.toFixed(6),
-      source: `${ipAddresses[sourceIndex]}${srcPort ? `:${srcPort}` : ''}`,
-      destination: `${ipAddresses[destIndex]}${dstPort ? `:${dstPort}` : ''}`,
-      protocol: protocol,
-      length: length,
-      info: info,
-      // Add hex and ASCII dumps
-      hexDump: generateHexDump(),
-      asciiDump: generateAsciiDump(),
-      // Add protocol-specific fields
-      ethernet: {
-        dstMac: generateMacAddress(),
-        srcMac: generateMacAddress(),
-        type: "0x0800 (IPv4)"
-      },
-      ip: {
-        version: 4,
-        headerLength: "20 bytes",
-        ttl: 64,
-        protocol: protocol === "TCP" ? "TCP (6)" : protocol === "UDP" ? "UDP (17)" : "ICMP (1)",
-        source: ipAddresses[sourceIndex],
-        destination: ipAddresses[destIndex]
-      },
-      tcp: protocol === "TCP" ? {
-        srcPort: srcPort,
-        dstPort: dstPort,
-        seq: Math.floor(Math.random() * 1000000000),
-        ack: Math.floor(Math.random() * 1000000000),
-        flags: info.split(" ")[0],
-        window: 8192 + Math.floor(Math.random() * 57000)
-      } : undefined,
-      layers: ["Ethernet", "IPv4", protocol, protocol === "HTTP" || protocol === "HTTPS" ? "TLS" : ""]
-        .filter(l => l !== "")
-    });
-  }
-  
-  return packets;
+const formatIPv4 = (view: DataView, offset: number): string => {
+  return `${view.getUint8(offset)}.${view.getUint8(offset + 1)}.${view.getUint8(offset + 2)}.${view.getUint8(offset + 3)}`;
 };
 
 /**
- * Generate a random MAC address
+ * Get protocol name from IP protocol number
  */
-const generateMacAddress = (): string => {
-  const hexDigits = "0123456789ABCDEF";
-  let mac = "";
-  
-  for (let i = 0; i < 6; i++) {
-    const hex1 = hexDigits[Math.floor(Math.random() * 16)];
-    const hex2 = hexDigits[Math.floor(Math.random() * 16)];
-    mac += hex1 + hex2;
-    if (i < 5) mac += ":";
+const getProtocolName = (protocol: number): string => {
+  switch (protocol) {
+    case 1: return 'ICMP';
+    case 6: return 'TCP';
+    case 17: return 'UDP';
+    default: return `Protocol-${protocol}`;
   }
-  
-  return mac;
 };
 
 /**
- * Generate a random hex dump
+ * Get TCP flags as string
  */
-const generateHexDump = (): string => {
-  const hexDigits = "0123456789ABCDEF";
-  let result = "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\n";
+const getTcpFlags = (flags: number): string => {
+  const flagMap = [
+    { mask: 0x01, name: 'FIN' },
+    { mask: 0x02, name: 'SYN' },
+    { mask: 0x04, name: 'RST' },
+    { mask: 0x08, name: 'PSH' },
+    { mask: 0x10, name: 'ACK' },
+    { mask: 0x20, name: 'URG' },
+    { mask: 0x40, name: 'ECE' },
+    { mask: 0x80, name: 'CWR' }
+  ];
   
-  for (let line = 0; line < 3; line++) {
-    result += line.toString(16).padStart(4, '0') + ": ";
+  const activeFlags = flagMap
+    .filter(flag => (flags & flag.mask) !== 0)
+    .map(flag => flag.name);
     
-    for (let i = 0; i < 16; i++) {
-      const hex1 = hexDigits[Math.floor(Math.random() * 16)];
-      const hex2 = hexDigits[Math.floor(Math.random() * 16)];
-      result += hex1 + hex2 + " ";
-    }
-    
-    result += "\n";
-  }
-  
-  return result;
+  return activeFlags.length > 0 ? activeFlags.join(', ') : 'None';
 };
 
 /**
- * Generate a random ASCII dump
+ * Get ICMP type and code as human-readable string
  */
-const generateAsciiDump = (): string => {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:!@#$%^&*()";
-  let result = "";
+const getIcmpTypeName = (type: number, code: number): string => {
+  switch (type) {
+    case 0: return 'Echo Reply';
+    case 3: 
+      switch (code) {
+        case 0: return 'Destination Network Unreachable';
+        case 1: return 'Destination Host Unreachable';
+        case 3: return 'Destination Port Unreachable';
+        default: return `Destination Unreachable (code ${code})`;
+      }
+    case 8: return 'Echo Request';
+    default: return `ICMP Type ${type}, Code ${code}`;
+  }
+};
+
+/**
+ * Create a hex dump from a byte array
+ */
+const createHexDump = (bytes: Uint8Array): string => {
+  let result = '';
+  const rowSize = 16;
   
-  for (let line = 0; line < 3; line++) {
-    for (let i = 0; i < 16; i++) {
-      if (Math.random() > 0.7) {
-        result += "."; // Non-printable character
+  for (let i = 0; i < bytes.length; i += rowSize) {
+    // Offset
+    const offset = i.toString(16).padStart(4, '0');
+    result += `${offset}: `;
+    
+    // Hex values
+    for (let j = 0; j < rowSize; j++) {
+      if (i + j < bytes.length) {
+        result += bytes[i + j].toString(16).padStart(2, '0') + ' ';
       } else {
-        result += chars[Math.floor(Math.random() * chars.length)];
+        result += '   ';
       }
     }
-    result += "\n";
+    
+    // ASCII representation
+    result += ' ';
+    for (let j = 0; j < rowSize; j++) {
+      if (i + j < bytes.length) {
+        const byte = bytes[i + j];
+        // Only print printable ASCII characters (32-126)
+        result += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
+      }
+    }
+    
+    result += '\n';
   }
   
   return result;
 };
 
 /**
- * Calculate protocol distribution
+ * Generate time series data for visualization
  */
-const calculateProtocolDistribution = (packets: any[]): any[] => {
-  const protocolCount: Record<string, number> = {};
-  
-  // Count packets by protocol
-  packets.forEach(packet => {
-    if (!protocolCount[packet.protocol]) {
-      protocolCount[packet.protocol] = 0;
-    }
-    protocolCount[packet.protocol]++;
-  });
-  
-  // Convert to array of {name, value} objects for charts
-  return Object.entries(protocolCount).map(([name, value]) => ({
-    name,
-    value
-  }));
-};
-
-/**
- * Calculate average packet size
- */
-const calculateAveragePacketSize = (packets: any[]): number => {
-  if (packets.length === 0) return 0;
-  const sum = packets.reduce((acc, packet) => acc + packet.length, 0);
-  return Math.round(sum / packets.length);
-};
-
-/**
- * Calculate median packet size
- */
-const calculateMedianPacketSize = (packets: any[]): number => {
-  if (packets.length === 0) return 0;
-  
-  const sortedSizes = packets.map(p => p.length).sort((a, b) => a - b);
-  const middle = Math.floor(sortedSizes.length / 2);
-  
-  if (sortedSizes.length % 2 === 0) {
-    return Math.round((sortedSizes[middle - 1] + sortedSizes[middle]) / 2);
-  } else {
-    return sortedSizes[middle];
-  }
-};
-
-/**
- * Calculate time-based statistics
- */
-const calculateTimeBasedStats = (packets: any[]): any => {
-  if (packets.length === 0) {
-    return {
-      duration: 0,
-      busiestSecond: "00:00:00",
-      busiestSecondCount: 0,
-      timeSeriesData: []
-    };
-  }
-  
-  // Convert packet times to seconds
-  const times = packets.map(p => parseFloat(p.time));
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
-  const duration = maxTime - minTime;
-  
-  // Find busiest second
-  const secondCounts: Record<number, number> = {};
-  packets.forEach(packet => {
-    const second = Math.floor(parseFloat(packet.time));
-    if (!secondCounts[second]) secondCounts[second] = 0;
-    secondCounts[second]++;
-  });
-  
-  let busiestSecond = 0;
-  let busiestSecondCount = 0;
-  
-  Object.entries(secondCounts).forEach(([second, count]) => {
-    if (count > busiestSecondCount) {
-      busiestSecond = parseInt(second);
-      busiestSecondCount = count;
-    }
-  });
-  
-  // Generate time series data for charts
-  const timeSeriesData = [];
+const generateTimeSeriesData = (packets: any[], duration: number): any[] => {
   const numPoints = 20; // Number of data points for the chart
-  const interval = duration / numPoints;
+  const timeSeriesData = Array(numPoints).fill(0).map((_, i) => ({
+    time: `${Math.round((i / numPoints) * 100)}%`,
+    value: 0
+  }));
   
-  for (let i = 0; i < numPoints; i++) {
-    const startTime = minTime + (i * interval);
-    const endTime = startTime + interval;
-    
-    // Count packets in this interval
-    const count = packets.filter(p => {
-      const time = parseFloat(p.time);
-      return time >= startTime && time < endTime;
-    }).length;
-    
-    timeSeriesData.push({
-      time: formatTimePoint(i, numPoints),
-      value: count
-    });
-  }
+  // Count packets in each time bucket
+  packets.forEach(packet => {
+    const time = parseFloat(packet.time);
+    const bucketIndex = Math.min(
+      Math.floor((time / duration) * numPoints),
+      numPoints - 1
+    );
+    if (bucketIndex >= 0) {
+      timeSeriesData[bucketIndex].value++;
+    }
+  });
   
-  return {
-    duration,
-    busiestSecond: formatSeconds(busiestSecond),
-    busiestSecondCount,
-    timeSeriesData
-  };
+  return timeSeriesData;
 };
 
 /**
- * Format a number of seconds as mm:ss
- */
-const formatTimePoint = (index: number, total: number): string => {
-  // Format as percentage through the file
-  return `${Math.round((index / total) * 100)}%`;
-};
-
-/**
- * Format seconds as "00:00:00"
- */
-const formatSeconds = (seconds: number): string => {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  
-  return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-};
-
-/**
- * Format duration in seconds as "00:00:00.000"
+ * Format duration in seconds as human-readable string
  */
 const formatDuration = (seconds: number): string => {
   const hrs = Math.floor(seconds / 3600);
@@ -543,74 +533,4 @@ const formatDuration = (seconds: number): string => {
   const ms = Math.floor((seconds % 1) * 1000);
   
   return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
-};
-
-/**
- * Format bytes as human-readable string
- */
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-/**
- * Generate a list of mock conversations between IP addresses
- */
-const generateConversations = (ipAddresses: string[], protocols: string[], count: number): any[] => {
-  const conversations = [];
-  
-  for (let i = 0; i < count; i++) {
-    const srcIndex = Math.floor(Math.random() * ipAddresses.length);
-    
-    // Ensure destination is different from source
-    let dstIndex;
-    do {
-      dstIndex = Math.floor(Math.random() * ipAddresses.length);
-    } while (dstIndex === srcIndex);
-    
-    const protocol = protocols[Math.floor(Math.random() * protocols.length)];
-    
-    // Generate ports based on protocol
-    let srcPort = 0;
-    let dstPort = 0;
-    
-    switch (protocol) {
-      case "TCP":
-        srcPort = 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 80 : 443;
-        break;
-      case "UDP":
-        srcPort = 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 53 : 5353;
-        break;
-      case "HTTP":
-        srcPort = Math.random() > 0.5 ? 80 : 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 80 : 1024 + Math.floor(Math.random() * 64000);
-        break;
-      case "DNS":
-        srcPort = Math.random() > 0.5 ? 53 : 1024 + Math.floor(Math.random() * 64000);
-        dstPort = Math.random() > 0.5 ? 53 : 1024 + Math.floor(Math.random() * 64000);
-        break;
-    }
-    
-    // Generate random packet count and bytes
-    const packetCount = 10 + Math.floor(Math.random() * 90);
-    const bytes = packetCount * (200 + Math.floor(Math.random() * 1000));
-    
-    // Generate random duration
-    const duration = (Math.random() * 5).toFixed(2);
-    
-    conversations.push({
-      id: i + 1,
-      endpointA: `${ipAddresses[srcIndex]}:${srcPort}`,
-      endpointB: `${ipAddresses[dstIndex]}:${dstPort}`,
-      protocol: protocol === "HTTP" ? "TCP/HTTP" : protocol === "DNS" ? "UDP/DNS" : protocol,
-      packetCount,
-      bytes,
-      duration: `${duration} sec`
-    });
-  }
-  
-  return conversations;
 };
