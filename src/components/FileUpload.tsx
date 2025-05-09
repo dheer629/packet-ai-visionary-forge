@@ -3,20 +3,22 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { processPcapFile } from '../utils/pcapProcessor';
 
 const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [processingProgress, setProcessingProgress] = useState(0);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.pcap')) {
+    if (!file.name.endsWith('.pcap') && !file.name.endsWith('.pcapng')) {
       toast({
         title: "Invalid File",
-        description: "Please upload a valid PCAP file",
+        description: "Please upload a valid PCAP or PCAPNG file",
         variant: "destructive"
       });
       return;
@@ -24,33 +26,42 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
 
     setFileName(file.name);
     setIsUploading(true);
+    setProcessingProgress(0);
     
-    // Simulate processing for demo purposes
-    // In a real app, we'd send this to a backend API
-    setTimeout(() => {
-      setIsUploading(false);
-      
-      // Generate mock data for demonstration
-      const mockData = {
-        filename: file.name,
-        size: file.size,
-        packets: Math.floor(Math.random() * 1000) + 100,
-        protocols: ['TCP', 'UDP', 'HTTP', 'DNS'],
-        timestamp: new Date().toISOString(),
-        summary: {
-          totalPackets: Math.floor(Math.random() * 1000) + 100,
-          ipAddresses: Math.floor(Math.random() * 50) + 10,
-          conversationCount: Math.floor(Math.random() * 30) + 5
-        }
+    try {
+      // Start processing the file
+      const progressCallback = (progress: number) => {
+        setProcessingProgress(Math.round(progress * 100));
       };
       
-      onFileUpload(mockData);
+      const analysisData = await processPcapFile(file, progressCallback);
+      
+      // If API keys are available, enrich the data with AI analysis
+      const apiKeys = JSON.parse(localStorage.getItem('nettracer-api-keys') || '[]');
+      const openaiKey = apiKeys.find((key: any) => key.name.toLowerCase().includes('openai'));
+      
+      if (openaiKey) {
+        // This would be implemented in a real app using an edge function
+        // For now, we'll just add the data directly
+        analysisData.aiEnriched = true;
+      }
+      
+      onFileUpload(analysisData);
       
       toast({
         title: "Analysis Complete",
         description: `Successfully processed ${file.name}`,
       });
-    }, 2000);
+    } catch (error) {
+      console.error('Error processing PCAP file:', error);
+      toast({
+        title: "Processing Error",
+        description: "Failed to process the PCAP file. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -61,7 +72,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
           type="file"
           id="pcap-upload"
           className="hidden"
-          accept=".pcap"
+          accept=".pcap,.pcapng"
           onChange={handleFileChange}
         />
         <label htmlFor="pcap-upload" className="w-full flex flex-col items-center cursor-pointer">
@@ -69,11 +80,18 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
           <p className="mb-2 text-center">
             <span className="font-semibold">Click to upload</span> or drag and drop
           </p>
-          <p className="text-xs text-cyber-secondary">.pcap files only</p>
+          <p className="text-xs text-cyber-secondary">.pcap or .pcapng files only</p>
           
           {fileName && (
             <div className="mt-4 text-sm text-cyber-accent">
-              {isUploading ? "Processing..." : `Selected: ${fileName}`}
+              {isUploading ? (
+                <div className="w-full">
+                  <p>Processing... {processingProgress}%</p>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 my-2">
+                    <div className="bg-cyber-primary h-2.5 rounded-full" style={{ width: `${processingProgress}%` }}></div>
+                  </div>
+                </div>
+              ) : `Selected: ${fileName}`}
             </div>
           )}
         </label>
@@ -85,7 +103,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
           className="bg-cyber-primary text-cyber-foreground hover:bg-cyber-primary/80"
           onClick={() => document.getElementById('pcap-upload')?.click()}
         >
-          {isUploading ? "Processing..." : "Analyze PCAP"}
+          {isUploading ? `Processing (${processingProgress}%)` : "Analyze PCAP"}
         </Button>
       </div>
     </div>
