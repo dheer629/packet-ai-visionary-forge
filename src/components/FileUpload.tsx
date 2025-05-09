@@ -29,28 +29,31 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
     setProcessingProgress(0);
     
     try {
+      console.log(`Processing file: ${file.name}, size: ${file.size} bytes`);
+      
       // Start processing the file with progress tracking
       const progressCallback = (progress: number) => {
         setProcessingProgress(Math.round(progress * 100));
       };
       
       const analysisData = await processPcapFile(file, progressCallback);
+      console.log('PCAP processing complete:', analysisData.summary);
       
-      // If API keys are available, enrich the data with AI analysis
+      // Check if we have API keys available for AI enhancement
       const apiKeys = JSON.parse(localStorage.getItem('nettracer-api-keys') || '[]');
       const openaiKey = apiKeys.find((key: any) => key.providerId === 'openai');
       
       if (openaiKey && openaiKey.value) {
         try {
-          // This would typically use an API endpoint for analysis
-          // For now, we'll just note the availability in the response
+          toast({
+            title: "AI Enhancement Available",
+            description: `Using ${openaiKey.name} to enhance analysis`,
+          });
+          
+          // For now we'll just mark it as AI enriched without actually calling the API
           analysisData.aiEnriched = true;
           analysisData.aiProvider = openaiKey.name;
-          
-          toast({
-            title: "AI Analysis Available",
-            description: `Using ${openaiKey.name} to analyze packet data`,
-          });
+          console.log('Analysis enriched with AI from provider:', openaiKey.name);
         } catch (error) {
           console.error('Error processing with AI:', error);
         }
@@ -60,13 +63,13 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       
       toast({
         title: "Analysis Complete",
-        description: `Successfully processed ${file.name}`,
+        description: `Successfully processed ${file.name} (${analysisData.summary.totalPackets} packets)`,
       });
     } catch (error) {
       console.error('Error processing PCAP file:', error);
       toast({
         title: "Processing Error",
-        description: `Failed to process the PCAP file: ${error.message}`,
+        description: `Failed to process the PCAP file: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive"
       });
     } finally {

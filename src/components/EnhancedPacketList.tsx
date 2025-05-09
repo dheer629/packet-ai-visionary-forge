@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,57 +24,60 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
     flags: ''
   });
   
-  // Filter packets based on search term and filters
-  const filteredPackets = packets.filter(packet => {
-    // Search filter
-    if (filter && 
-        !Object.values(packet).some(val => 
-          val?.toString().toLowerCase().includes(filter.toLowerCase())
-        )) {
-      return false;
-    }
-    
-    // Protocol filter
-    if (filterOptions.protocol && 
-        !packet.protocol.toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
-      return false;
-    }
-    
-    // Source filter
-    if (filterOptions.source && 
-        !packet.source.includes(filterOptions.source)) {
-      return false;
-    }
-    
-    // Destination filter
-    if (filterOptions.destination && 
-        !packet.destination.includes(filterOptions.destination)) {
-      return false;
-    }
-    
-    // Min length filter
-    if (filterOptions.minLength && 
-        packet.length < parseInt(filterOptions.minLength)) {
-      return false;
-    }
-    
-    // Max length filter
-    if (filterOptions.maxLength && 
-        packet.length > parseInt(filterOptions.maxLength)) {
-      return false;
-    }
-    
-    // Flag filter (in info field)
-    if (filterOptions.flags && 
-        !packet.info.toLowerCase().includes(filterOptions.flags.toLowerCase())) {
-      return false;
-    }
-    
-    return true;
-  });
+  // Filter packets based on search term and filters - memoized for performance
+  const filteredPackets = useMemo(() => {
+    return packets.filter(packet => {
+      // Search filter
+      if (filter && 
+          !Object.values(packet).some(val => 
+            val?.toString().toLowerCase().includes(filter.toLowerCase())
+          )) {
+        return false;
+      }
+      
+      // Protocol filter
+      if (filterOptions.protocol && 
+          !packet.protocol.toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
+        return false;
+      }
+      
+      // Source filter
+      if (filterOptions.source && 
+          !packet.source.includes(filterOptions.source)) {
+        return false;
+      }
+      
+      // Destination filter
+      if (filterOptions.destination && 
+          !packet.destination.includes(filterOptions.destination)) {
+        return false;
+      }
+      
+      // Min length filter
+      if (filterOptions.minLength && 
+          packet.length < parseInt(filterOptions.minLength)) {
+        return false;
+      }
+      
+      // Max length filter
+      if (filterOptions.maxLength && 
+          packet.length > parseInt(filterOptions.maxLength)) {
+        return false;
+      }
+      
+      // Flag filter (in info field)
+      if (filterOptions.flags && 
+          !packet.info.toLowerCase().includes(filterOptions.flags.toLowerCase())) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [packets, filter, filterOptions]);
 
   const handlePacketClick = (packet: any) => {
     setSelectedPacket(packet);
+    console.log('Selected packet details:', packet);
   };
 
   const closePacketDetails = () => {
@@ -89,6 +92,8 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       case 'DNS': return 'text-cyber-secondary';
       case 'HTTP': return 'text-blue-500';
       case 'HTTPS': return 'text-emerald-400';
+      case 'ARP': return 'text-purple-500';
+      case 'IPV6': return 'text-pink-500';
       default: return 'text-gray-400';
     }
   };
@@ -192,7 +197,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
                     onClick={() => handlePacketClick(packet)}
                   >
                     <TableCell className="font-mono">{packet.number}</TableCell>
-                    <TableCell className="font-mono">{packet.time}</TableCell>
+                    <TableCell className="font-mono">{typeof packet.relativeTime === 'string' ? packet.relativeTime : packet.time}</TableCell>
                     <TableCell className="font-mono">{packet.source}</TableCell>
                     <TableCell className="font-mono">{packet.destination}</TableCell>
                     <TableCell className={`font-mono ${getProtocolColor(packet.protocol)}`}>{packet.protocol}</TableCell>
