@@ -127,7 +127,8 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
           protocol: "Unknown",
           length: inclLen,
           info: '',
-          layers: []
+          layers: [],
+          hexDump: '' // Add this property to the packetDetails object
         };
         
         // For Ethernet frames
@@ -616,7 +617,8 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
               protocol: "Unknown",
               length: capturedLen,
               info: '',
-              layers: []
+              layers: [],
+              hexDump: '' // Add this property to the packetDetails object
             };
             
             // Extract actual packet data (starts at offset + 28, aligned to 32 bits)
@@ -711,7 +713,8 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
             protocol: "Unknown",
             length: packetLen,
             info: "Simple Packet (no timestamp)",
-            layers: ["Raw"]
+            layers: ["Raw"],
+            hexDump: "" // Add this property to ensure it exists
           };
           
           // Add hex dump
