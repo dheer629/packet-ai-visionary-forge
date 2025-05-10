@@ -93,6 +93,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
     let minTimestamp = Number.MAX_VALUE;
     let maxTimestamp = 0;
     
+    // Debug the first few bytes to understand the format
+    const firstPacketData = new Uint8Array(buffer.slice(offset, offset + 48));
+    console.log('First packet header and data (hex):', Array.from(firstPacketData).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    
     // Process packets until we reach the end of the file
     while (offset + 16 <= buffer.byteLength) {
       try {
@@ -128,8 +132,21 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
           length: inclLen,
           info: '',
           layers: [],
-          hexDump: '' // Add this property to the packetDetails object
+          hexDump: '',
+          asciiDump: ''
         };
+        
+        // Create hex dump for debugging and display
+        const dumpBytes = Math.min(48, inclLen);
+        const packetBytes = new Uint8Array(buffer.slice(offset, offset + dumpBytes));
+        packetDetails.hexDump = createHexDump(packetBytes);
+        packetDetails.asciiDump = createAsciiDump(packetBytes);
+        
+        // Debug the first few packets extensively
+        if (packetCount < 3) {
+          console.log(`Packet #${packetCount + 1} at offset ${offset}, length ${inclLen}`);
+          console.log(`Packet data (first ${dumpBytes} bytes):`, Array.from(packetBytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
+        }
         
         // For Ethernet frames
         if (network === 1 && inclLen >= 14) {
@@ -138,7 +155,11 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
           // Parse Ethernet header (14 bytes)
           const destMac = formatMacAddress(new Uint8Array(buffer.slice(offset, offset + 6)));
           const srcMac = formatMacAddress(new Uint8Array(buffer.slice(offset + 6, offset + 12)));
-          const etherType = dataView.getUint16(offset + 12, isLittleEndian);
+          const etherType = dataView.getUint16(offset + 12, false); // Ethernet type is always big-endian
+          
+          if (packetCount < 3) {
+            console.log(`Packet #${packetCount + 1} Ethernet: dst=${destMac}, src=${srcMac}, type=0x${etherType.toString(16).padStart(4, '0')}`);
+          }
           
           packetDetails.ethernet = {
             destMac,
@@ -160,6 +181,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                 const protocol = dataView.getUint8(offset + 14 + 9);
                 const sourceIP = formatIPv4(dataView, offset + 14 + 12);
                 const destIP = formatIPv4(dataView, offset + 14 + 16);
+                
+                if (packetCount < 3) {
+                  console.log(`Packet #${packetCount + 1} IPv4: src=${sourceIP}, dst=${destIP}, proto=${protocol}`);
+                }
                 
                 // Add IPs to set and update packet details
                 ipAddresses.add(sourceIP);
@@ -183,10 +208,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                 if (protocol === 6 && ipHeaderEnd + 20 <= offset + inclLen) {
                   packetDetails.layers.push("TCP");
                   
-                  const srcPort = dataView.getUint16(ipHeaderEnd, isLittleEndian);
-                  const dstPort = dataView.getUint16(ipHeaderEnd + 2, isLittleEndian);
-                  const seqNum = dataView.getUint32(ipHeaderEnd + 4, isLittleEndian);
-                  const ackNum = dataView.getUint32(ipHeaderEnd + 8, isLittleEndian);
+                  const srcPort = dataView.getUint16(ipHeaderEnd, false); // Ports are in network byte order
+                  const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
+                  const seqNum = dataView.getUint32(ipHeaderEnd + 4, false);
+                  const ackNum = dataView.getUint32(ipHeaderEnd + 8, false);
                   const dataOffset = ((dataView.getUint8(ipHeaderEnd + 12) >> 4) & 0xF) * 4;
                   const flags = dataView.getUint8(ipHeaderEnd + 13);
                   
@@ -201,6 +226,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                   // Decode TCP flags
                   const flagsStr = getTcpFlags(flags);
                   
+                  if (packetCount < 3) {
+                    console.log(`Packet #${packetCount + 1} TCP: ${sourceIP}:${srcPort} -> ${destIP}:${dstPort}, flags=${flagsStr}`);
+                  }
+                  
                   // Add TCP-specific info
                   packetDetails.tcp = {
                     srcPort,
@@ -209,7 +238,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                     ack: ackNum,
                     dataOffset,
                     flags: flagsStr,
-                    window: dataView.getUint16(ipHeaderEnd + 14, isLittleEndian)
+                    window: dataView.getUint16(ipHeaderEnd + 14, false)
                   };
                   
                   // Check for higher-layer protocols based on well-known ports
@@ -253,9 +282,9 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                 else if (protocol === 17 && ipHeaderEnd + 8 <= offset + inclLen) {
                   packetDetails.layers.push("UDP");
                   
-                  const srcPort = dataView.getUint16(ipHeaderEnd, isLittleEndian);
-                  const dstPort = dataView.getUint16(ipHeaderEnd + 2, isLittleEndian);
-                  const length = dataView.getUint16(ipHeaderEnd + 4, isLittleEndian);
+                  const srcPort = dataView.getUint16(ipHeaderEnd, false);
+                  const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
+                  const length = dataView.getUint16(ipHeaderEnd + 4, false);
                   
                   // Update protocol name
                   packetDetails.protocol = "UDP";
@@ -264,6 +293,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                   // Set source and destination with ports
                   packetDetails.source = `${sourceIP}:${srcPort}`;
                   packetDetails.destination = `${destIP}:${dstPort}`;
+                  
+                  if (packetCount < 3) {
+                    console.log(`Packet #${packetCount + 1} UDP: ${sourceIP}:${srcPort} -> ${destIP}:${dstPort}, length=${length}`);
+                  }
                   
                   // Add UDP-specific info
                   packetDetails.udp = {
@@ -319,11 +352,15 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                   packetDetails.icmp = {
                     type,
                     code,
-                    checksum: dataView.getUint16(ipHeaderEnd + 2, isLittleEndian),
+                    checksum: dataView.getUint16(ipHeaderEnd + 2, false),
                     typeName: getIcmpTypeName(type, code)
                   };
                   
                   packetDetails.info = getIcmpTypeName(type, code);
+                  
+                  if (packetCount < 3) {
+                    console.log(`Packet #${packetCount + 1} ICMP: ${sourceIP} -> ${destIP}, type=${type}, code=${code}`);
+                  }
                 }
                 // Other IP protocols
                 else {
@@ -339,6 +376,9 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                 packetDetails.protocol = "IPv6";
                 protocolCounts["IPv6"] = (protocolCounts["IPv6"] || 0) + 1;
                 packetDetails.info = "IPv6 Packet";
+                
+                // Basic IPv6 header parsing could be added here
+                packetDetails.info = "IPv6 Packet (details not implemented)";
               }
             } catch (e) {
               console.warn(`Error parsing IP packet at offset ${offset}:`, e);
@@ -350,16 +390,16 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
             packetDetails.protocol = "ARP";
             protocolCounts["ARP"] = (protocolCounts["ARP"] || 0) + 1;
             
-            const hardwareType = dataView.getUint16(offset + 14, isLittleEndian);
-            const protocolType = dataView.getUint16(offset + 16, isLittleEndian);
+            const hardwareType = dataView.getUint16(offset + 14, false);
+            const protocolType = dataView.getUint16(offset + 16, false);
             const hardwareSize = dataView.getUint8(offset + 18);
             const protocolSize = dataView.getUint8(offset + 19);
-            const operation = dataView.getUint16(offset + 20, isLittleEndian);
+            const operation = dataView.getUint16(offset + 20, false);
             
-            const senderMac = formatMacAddress(new Uint8Array(buffer.slice(offset + 22, offset + 28)));
-            const senderIP = formatIPv4(dataView, offset + 28);
-            const targetMac = formatMacAddress(new Uint8Array(buffer.slice(offset + 32, offset + 38)));
-            const targetIP = formatIPv4(dataView, offset + 38);
+            const senderMac = formatMacAddress(new Uint8Array(buffer.slice(offset + 22, offset + 22 + hardwareSize)));
+            const senderIP = formatIPv4(dataView, offset + 22 + hardwareSize);
+            const targetMac = formatMacAddress(new Uint8Array(buffer.slice(offset + 22 + hardwareSize + protocolSize, offset + 22 + 2*hardwareSize + protocolSize)));
+            const targetIP = formatIPv4(dataView, offset + 22 + hardwareSize + protocolSize + hardwareSize);
             
             // Add IPs to set and update packet details
             ipAddresses.add(senderIP);
@@ -379,6 +419,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
             };
             
             packetDetails.info = `${operation === 1 ? "Who has" : "Is at"} ${targetIP}? Tell ${senderIP}`;
+            
+            if (packetCount < 3) {
+              console.log(`Packet #${packetCount + 1} ARP: ${operation === 1 ? "Request" : "Reply"}, sender=${senderIP}, target=${targetIP}`);
+            }
           }
           // IPv6 (0x86DD)
           else if (etherType === 0x86DD) {
@@ -392,6 +436,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
             packetDetails.protocol = `EtherType 0x${etherType.toString(16).padStart(4, '0')}`;
             protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
             packetDetails.info = `EtherType: 0x${etherType.toString(16).padStart(4, '0')}`;
+            
+            if (packetCount < 3) {
+              console.log(`Packet #${packetCount + 1} Unknown EtherType: 0x${etherType.toString(16).padStart(4, '0')}`);
+            }
           }
         }
         // Raw IP (network = 101)
@@ -408,16 +456,16 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
           // Unsupported link-layer type
           packetDetails.protocol = `Link-type ${network}`;
           packetDetails.info = `Unsupported link-layer type: ${network}`;
+          
+          if (packetCount < 3) {
+            console.log(`Packet #${packetCount + 1} Unsupported network type: ${network}`);
+          }
         }
         
         // Always set a relative time once we know the minimum timestamp
         if (minTimestamp !== Number.MAX_VALUE && minTimestamp <= timestamp) {
           packetDetails.relativeTime = (timestamp - minTimestamp).toFixed(6);
         }
-        
-        // Add hex dump for the first portion of the packet
-        const dumpBytes = Math.min(48, inclLen);
-        packetDetails.hexDump = createHexDump(new Uint8Array(buffer.slice(offset, offset + dumpBytes)));
         
         // Add packet size to statistics
         packetSizes.push(inclLen);
@@ -443,6 +491,9 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
     }
     
     console.log(`Finished processing ${packetCount} packets`);
+    console.log(`Detected IP addresses: ${Array.from(ipAddresses).join(', ')}`);
+    console.log(`Detected protocols: ${Object.keys(protocolCounts).join(', ')}`);
+    console.log(`Conversation count: ${conversations.size}`);
     
     // Calculate statistics
     const avgPacketSize = packetSizes.length > 0 
@@ -922,6 +973,23 @@ const createHexDump = (bytes: Uint8Array): string => {
     result += '\n';
   }
   
+  return result;
+};
+
+/**
+ * Create an ASCII dump from a byte array (only printable characters)
+ */
+const createAsciiDump = (bytes: Uint8Array): string => {
+  let result = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = bytes[i];
+    result += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
+    
+    // Add a newline every 32 characters for readability
+    if ((i + 1) % 32 === 0) {
+      result += '\n';
+    }
+  }
   return result;
 };
 
