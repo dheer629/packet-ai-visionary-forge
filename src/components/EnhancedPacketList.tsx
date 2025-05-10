@@ -27,29 +27,33 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
     return packets.filter(packet => {
-      // Search filter
+      // Global search filter
       if (filter && 
-          !Object.values(packet).some(val => 
-            val?.toString().toLowerCase().includes(filter.toLowerCase())
-          )) {
+          !Object.entries(packet).some(([key, val]) => {
+            // Only search certain fields to improve performance
+            if (['number', 'time', 'source', 'destination', 'protocol', 'info'].includes(key)) {
+              return val?.toString().toLowerCase().includes(filter.toLowerCase());
+            }
+            return false;
+          })) {
         return false;
       }
       
       // Protocol filter
       if (filterOptions.protocol && 
-          !packet.protocol.toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
+          !packet.protocol?.toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
         return false;
       }
       
       // Source filter
       if (filterOptions.source && 
-          !packet.source.includes(filterOptions.source)) {
+          !packet.source?.includes(filterOptions.source)) {
         return false;
       }
       
       // Destination filter
       if (filterOptions.destination && 
-          !packet.destination.includes(filterOptions.destination)) {
+          !packet.destination?.includes(filterOptions.destination)) {
         return false;
       }
       
@@ -65,10 +69,15 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
         return false;
       }
       
-      // Flag filter (in info field)
-      if (filterOptions.flags && 
-          !packet.info.toLowerCase().includes(filterOptions.flags.toLowerCase())) {
-        return false;
+      // Flag filter (in info field or tcp.flags if available)
+      if (filterOptions.flags) {
+        const flagsLower = filterOptions.flags.toLowerCase();
+        const infoMatches = packet.info?.toLowerCase().includes(flagsLower);
+        const tcpFlagsMatch = packet.tcp?.flags?.toLowerCase().includes(flagsLower);
+        
+        if (!infoMatches && !tcpFlagsMatch) {
+          return false;
+        }
       }
       
       return true;
@@ -84,7 +93,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
     setSelectedPacket(null);
   };
 
-  const getProtocolColor = (protocol: string) => {
+  const getProtocolColor = (protocol: string = "") => {
     switch (protocol.toUpperCase()) {
       case 'TCP': return 'text-cyber-primary';
       case 'UDP': return 'text-green-500';
@@ -134,13 +143,13 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
             className="text-xs bg-cyber-muted border-cyber-border"
           />
           <Input
-            placeholder="Source IP"
+            placeholder="Source IP/Port"
             value={filterOptions.source}
             onChange={(e) => setFilterOptions({...filterOptions, source: e.target.value})}
             className="text-xs bg-cyber-muted border-cyber-border"
           />
           <Input
-            placeholder="Destination IP"
+            placeholder="Destination IP/Port"
             value={filterOptions.destination}
             onChange={(e) => setFilterOptions({...filterOptions, destination: e.target.value})}
             className="text-xs bg-cyber-muted border-cyber-border"
@@ -198,11 +207,15 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
                   >
                     <TableCell className="font-mono">{packet.number}</TableCell>
                     <TableCell className="font-mono">{typeof packet.relativeTime === 'string' ? packet.relativeTime : packet.time}</TableCell>
-                    <TableCell className="font-mono">{packet.source}</TableCell>
-                    <TableCell className="font-mono">{packet.destination}</TableCell>
-                    <TableCell className={`font-mono ${getProtocolColor(packet.protocol)}`}>{packet.protocol}</TableCell>
+                    <TableCell className="font-mono">{packet.source || 'Unknown'}</TableCell>
+                    <TableCell className="font-mono">{packet.destination || 'Unknown'}</TableCell>
+                    <TableCell className={`font-mono ${getProtocolColor(packet.protocol)}`}>
+                      {packet.protocol || 'Unknown'}
+                    </TableCell>
                     <TableCell className="font-mono">{packet.length}</TableCell>
-                    <TableCell className="font-mono text-xs max-w-[200px] truncate">{packet.info}</TableCell>
+                    <TableCell className="font-mono text-xs max-w-[200px] truncate">
+                      {packet.info || (packet.protocol ? `${packet.protocol} Packet` : 'Raw Packet')}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

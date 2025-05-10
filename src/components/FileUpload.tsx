@@ -10,6 +10,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
   const [isUploading, setIsUploading] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [dataFormat, setDataFormat] = useState<string | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -27,6 +28,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
     setFileName(file.name);
     setIsUploading(true);
     setProcessingProgress(0);
+    setDataFormat(file.name.endsWith('.pcapng') ? 'PCAPNG' : 'PCAP');
     
     try {
       console.log(`Processing file: ${file.name}, size: ${file.size} bytes`);
@@ -99,7 +101,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
             <div className="mt-4 text-sm text-cyber-accent">
               {isUploading ? (
                 <div className="w-full">
-                  <p>Processing... {processingProgress}%</p>
+                  <p>Processing {dataFormat} file... {processingProgress}%</p>
                   <div className="w-full bg-gray-200 rounded-full h-2.5 my-2">
                     <div className="bg-cyber-primary h-2.5 rounded-full" style={{ width: `${processingProgress}%` }}></div>
                   </div>
