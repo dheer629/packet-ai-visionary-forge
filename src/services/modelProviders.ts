@@ -157,6 +157,134 @@ export const modelProviders: ModelProvider[] = [
     }
   },
   {
+    id: 'cohere',
+    name: 'Cohere',
+    description: 'Cohere provides models specialized in text understanding and generation',
+    apiKeyName: 'COHERE_API_KEY',
+    models: [
+      { id: 'command-r-plus', name: 'Command R+', description: 'Most powerful Command model', available: true, contextWindow: 128000 },
+      { id: 'command-r', name: 'Command R', description: 'Balanced performance and capabilities', available: true, contextWindow: 128000 },
+      { id: 'command-light', name: 'Command Light', description: 'Fast, lightweight model', available: true, contextWindow: 128000 },
+    ],
+    testConnection: async (apiKey: string) => {
+      try {
+        const response = await fetch('https://api.cohere.ai/v1/models', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        return response.status === 200;
+      } catch (error) {
+        console.error('Cohere connection test failed:', error);
+        return false;
+      }
+    },
+    getModels: async (apiKey: string) => {
+      try {
+        const response = await fetch('https://api.cohere.ai/v1/models', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch Cohere models');
+        }
+        
+        const data = await response.json();
+        
+        const relevantModels = [
+          { id: 'command-r-plus', name: 'Command R+', description: 'Most powerful Command model', contextWindow: 128000 },
+          { id: 'command-r', name: 'Command R', description: 'Balanced performance and capabilities', contextWindow: 128000 },
+          { id: 'command-light', name: 'Command Light', description: 'Fast, lightweight model', contextWindow: 128000 },
+        ];
+        
+        // Check which models are available
+        const availableModels = data.models?.map((model: any) => model.id) || [];
+        
+        return relevantModels.map(model => ({
+          ...model,
+          available: availableModels.includes(model.id),
+        }));
+      } catch (error) {
+        console.error('Failed to fetch Cohere models:', error);
+        return [
+          { id: 'command-r-plus', name: 'Command R+', description: 'Most powerful Command model', available: false, contextWindow: 128000 },
+          { id: 'command-r', name: 'Command R', description: 'Balanced performance and capabilities', available: false, contextWindow: 128000 },
+          { id: 'command-light', name: 'Command Light', description: 'Fast, lightweight model', available: false, contextWindow: 128000 },
+        ];
+      }
+    }
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    description: 'Groq provides extremely fast inference for LLM models',
+    apiKeyName: 'GROQ_API_KEY',
+    models: [
+      { id: 'llama3-70b-8192', name: 'LLama 3 70B', description: 'Most powerful LLama 3 model', available: true, contextWindow: 8192 },
+      { id: 'llama3-8b-8192', name: 'LLama 3 8B', description: 'Efficient LLama 3 model', available: true, contextWindow: 8192 },
+      { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', description: 'Powerful mixture of experts model', available: true, contextWindow: 32768 },
+    ],
+    testConnection: async (apiKey: string) => {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/models', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        return response.status === 200;
+      } catch (error) {
+        console.error('Groq connection test failed:', error);
+        return false;
+      }
+    },
+    getModels: async (apiKey: string) => {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/models', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch Groq models');
+        }
+        
+        const data = await response.json();
+        
+        const relevantModels = [
+          { id: 'llama3-70b-8192', name: 'LLama 3 70B', description: 'Most powerful LLama 3 model', contextWindow: 8192 },
+          { id: 'llama3-8b-8192', name: 'LLama 3 8B', description: 'Efficient LLama 3 model', contextWindow: 8192 },
+          { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', description: 'Powerful mixture of experts model', contextWindow: 32768 },
+        ];
+        
+        // Check which models are available
+        const availableModels = data.data?.map((model: any) => model.id) || [];
+        
+        return relevantModels.map(model => ({
+          ...model,
+          available: availableModels.includes(model.id),
+        }));
+      } catch (error) {
+        console.error('Failed to fetch Groq models:', error);
+        return [
+          { id: 'llama3-70b-8192', name: 'LLama 3 70B', description: 'Most powerful LLama 3 model', available: false, contextWindow: 8192 },
+          { id: 'llama3-8b-8192', name: 'LLama 3 8B', description: 'Efficient LLama 3 model', available: false, contextWindow: 8192 },
+          { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', description: 'Powerful mixture of experts model', available: false, contextWindow: 32768 },
+        ];
+      }
+    }
+  },
+  {
     id: 'deepseek',
     name: 'Deepseek',
     description: 'Deepseek provides state-of-the-art language models',
@@ -195,7 +323,7 @@ export const modelProviders: ModelProvider[] = [
         }
         
         const data = await response.json();
-        const availableModels = data.data.map((model: any) => model.id);
+        const availableModels = data.data?.map((model: any) => model.id) || [];
         
         return [
           { id: 'deepseek-coder', name: 'Deepseek Coder', description: 'Specialized for code generation', available: availableModels.includes('deepseek-coder') },
@@ -221,12 +349,15 @@ export const modelProviders: ModelProvider[] = [
     ],
     testConnection: async (apiKey: string) => {
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+        // Fix: Use the key parameter correctly in the URL
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
           },
         });
+        
+        console.log('Google API test response:', response.status);
         return response.status === 200;
       } catch (error) {
         console.error('Google AI connection test failed:', error);
@@ -235,7 +366,8 @@ export const modelProviders: ModelProvider[] = [
     },
     getModels: async (apiKey: string) => {
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+        // Fix: Use the key parameter correctly in the URL
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -243,15 +375,22 @@ export const modelProviders: ModelProvider[] = [
         });
         
         if (!response.ok) {
+          console.error('Google API response not OK:', await response.text());
           throw new Error('Failed to fetch Google AI models');
         }
         
         const data = await response.json();
-        const availableModels = data.models.map((model: any) => model.name.split('/').pop());
+        // Extract model names and check if gemini models are available
+        const availableModels = data.models?.map((model: any) => {
+          const modelName = model.name.split('/').pop();
+          return modelName;
+        }) || [];
+        
+        console.log('Available Google models:', availableModels);
         
         return [
-          { id: 'gemini-pro', name: 'Gemini Pro', description: 'Multimodal model for text and vision tasks', available: availableModels.includes('gemini-pro') },
-          { id: 'gemini-ultra', name: 'Gemini Ultra', description: 'Advanced multimodal model with superior reasoning', available: availableModels.includes('gemini-ultra') },
+          { id: 'gemini-pro', name: 'Gemini Pro', description: 'Multimodal model for text and vision tasks', available: availableModels.some((m: string) => m.includes('gemini-pro')) },
+          { id: 'gemini-ultra', name: 'Gemini Ultra', description: 'Advanced multimodal model with superior reasoning', available: availableModels.some((m: string) => m.includes('gemini-ultra')) },
         ];
       } catch (error) {
         console.error('Failed to fetch Google AI models:', error);
@@ -275,13 +414,17 @@ export async function fetchAvailableModels(providerId: string, apiKey: string): 
   if (!provider) return [];
   
   try {
+    console.log(`Testing connection for provider: ${providerId}`);
     const isConnected = await provider.testConnection(apiKey);
+    console.log(`Connection test for ${providerId}: ${isConnected ? 'SUCCESS' : 'FAILED'}`);
+    
     if (!isConnected) {
       return provider.models.map(model => ({ ...model, available: false }));
     }
     
     // If provider has a getModels method, use it
     if (provider.getModels) {
+      console.log(`Fetching models for ${providerId}...`);
       return await provider.getModels(apiKey);
     }
     

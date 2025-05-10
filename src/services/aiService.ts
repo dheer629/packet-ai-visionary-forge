@@ -47,6 +47,10 @@ export async function callAIModel(options: AIRequestOptions): Promise<AIResponse
       return callDeepseek(apiKey, modelId, prompt, maxTokens, temperature);
     case 'google':
       return callGoogle(apiKey, modelId, prompt, maxTokens, temperature);
+    case 'cohere':
+      return callCohere(apiKey, modelId, prompt, maxTokens, temperature);
+    case 'groq':
+      return callGroq(apiKey, modelId, prompt, maxTokens, temperature);
     default:
       return { text: '', error: 'Unsupported provider' };
   }
@@ -200,11 +204,10 @@ async function callGoogle(
   temperature: number
 ): Promise<AIResponse> {
   try {
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent', {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
         contents: [
@@ -224,8 +227,17 @@ async function callGoogle(
     });
     
     if (!response.ok) {
-      const errorData = await response.json();
-      return { text: '', error: errorData.error?.message || 'Google API error' };
+      const errorText = await response.text();
+      let errorMessage = 'Google API error';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || errorMessage;
+      } catch (e) {
+        // If we can't parse the error, just use the text
+        errorMessage = errorText || errorMessage;
+      }
+      console.error('Google API error response:', errorText);
+      return { text: '', error: errorMessage };
     }
     
     const data = await response.json();
@@ -239,6 +251,96 @@ async function callGoogle(
     };
   } catch (error) {
     console.error('Google API error:', error);
+    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+async function callCohere(
+  apiKey: string, 
+  modelId: string, 
+  prompt: string, 
+  maxTokens: number, 
+  temperature: number
+): Promise<AIResponse> {
+  try {
+    const response = await fetch('https://api.cohere.ai/v1/chat', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: modelId,
+        message: prompt,
+        max_tokens: maxTokens,
+        temperature: temperature,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { text: '', error: errorData.message || 'Cohere API error' };
+    }
+    
+    const data = await response.json();
+    return {
+      text: data.text || '',
+      usage: {
+        promptTokens: data.meta?.prompt_tokens || 0,
+        completionTokens: data.meta?.response_tokens || 0,
+        totalTokens: (data.meta?.prompt_tokens || 0) + (data.meta?.response_tokens || 0),
+      }
+    };
+  } catch (error) {
+    console.error('Cohere API error:', error);
+    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+async function callGroq(
+  apiKey: string, 
+  modelId: string, 
+  prompt: string, 
+  maxTokens: number, 
+  temperature: number
+): Promise<AIResponse> {
+  try {
+    // Groq uses OpenAI-compatible API
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: maxTokens,
+        temperature: temperature,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      return { text: '', error: errorData.error?.message || 'Groq API error' };
+    }
+    
+    const data = await response.json();
+    return {
+      text: data.choices[0]?.message?.content || '',
+      usage: {
+        promptTokens: data.usage?.prompt_tokens || 0,
+        completionTokens: data.usage?.completion_tokens || 0,
+        totalTokens: data.usage?.total_tokens || 0,
+      }
+    };
+  } catch (error) {
+    console.error('Groq API error:', error);
     return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
