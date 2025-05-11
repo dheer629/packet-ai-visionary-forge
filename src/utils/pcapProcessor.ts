@@ -702,142 +702,143 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
               console.log(`Packet #${packetCount + 1} Unknown EtherType: 0x${etherType.toString(16).padStart(4, '0')}`);
             }
           }
-        
-          // Always set a relative time once we know the minimum timestamp
-          if (minTimestamp !== Number.MAX_VALUE && minTimestamp <= timestamp) {
-            packetDetails.relativeTime = (timestamp - minTimestamp).toFixed(6);
-          }
-        
-          // Add packet size to statistics
-          packetSizes.push(inclLen);
-        
-          // Store the packet (limit to 1000 for browser performance)
-          if (packetCount < 10000) {
-            packets.push(packetDetails);
-          }
-        
-          // Move to next packet
-          offset += inclLen;
-          packetCount++;
-        
-          // Log progress occasionally
-          if (packetCount % 1000 === 0) {
-            console.log(`Processed ${packetCount} packets...`);
-            progressCallback?.(0.3 + (0.7 * Math.min(packetCount / 50000, 1))); // Update progress
-          }
-        } catch (error) {
-          console.error(`Error parsing packet at offset ${offset}:`, error);
-          // Try to recover and move to the next 16-byte boundary
-          offset = (Math.floor(offset / 16) + 1) * 16;
         }
+      
+        // Always set a relative time once we know the minimum timestamp
+        if (minTimestamp !== Number.MAX_VALUE && minTimestamp <= timestamp) {
+          packetDetails.relativeTime = (timestamp - minTimestamp).toFixed(6);
+        }
+      
+        // Add packet size to statistics
+        packetSizes.push(inclLen);
+      
+        // Store the packet (limit to 1000 for browser performance)
+        if (packetCount < 10000) {
+          packets.push(packetDetails);
+        }
+      
+        // Move to next packet
+        offset += inclLen;
+        packetCount++;
+      
+        // Log progress occasionally
+        if (packetCount % 1000 === 0) {
+          console.log(`Processed ${packetCount} packets...`);
+          progressCallback?.(0.3 + (0.7 * Math.min(packetCount / 50000, 1))); // Update progress
+        }
+      } catch (error) {
+        console.error(`Error parsing packet at offset ${offset}:`, error);
+        // Try to recover and move to the next 16-byte boundary
+        offset = (Math.floor(offset / 16) + 1) * 16;
       }
-      
-      console.log(`Finished processing ${packetCount} packets`);
-      console.log(`Detected IP addresses: ${Array.from(ipAddresses).join(', ')}`);
-      console.log(`Detected protocols: ${Object.keys(protocolCounts).join(', ')}`);
-      console.log(`Conversation count: ${conversations.size}`);
-      
-      // Calculate statistics
-      const avgPacketSize = packetSizes.length > 0 
-        ? Math.round(packetSizes.reduce((sum, size) => sum + size, 0) / packetSizes.length) 
-        : 0;
-      
-      // Sort packet sizes for median calculation
-      packetSizes.sort((a, b) => a - b);
-      const medianPacketSize = packetSizes.length > 0 
-        ? packetSizes[Math.floor(packetSizes.length / 2)]
-        : 0;
-      
-      // Convert protocol counts to array for chart
-      const protocolData = Object.entries(protocolCounts).map(([name, value]) => ({
-        name,
-        value
-      }));
-      
-      // Generate time series data for visualization
-      const duration = maxTimestamp - minTimestamp;
-      const timeSeriesData = generateTimeSeriesData(packets, duration);
-      
-      // Format conversations with duration
-      const conversationsArray = Array.from(conversations.values()).map(conv => {
-        return {
-          ...conv,
-          duration: `${(conv.endTime - conv.startTime).toFixed(2)} sec`
-        };
-      });
-      
-      // Get top IPs by packet count
-      const ipCountMap = new Map();
-      packets.forEach(packet => {
-        // Extract IP without port
-        const sourceIP = packet.source?.split(':')?.[0] || packet.source;
-        const destIP = packet.destination?.split(':')?.[0] || packet.destination;
-        
-        if (sourceIP && sourceIP !== "Unknown") {
-          ipCountMap.set(sourceIP, (ipCountMap.get(sourceIP) || 0) + 1);
-        }
-        if (destIP && destIP !== "Unknown") {
-          ipCountMap.set(destIP, (ipCountMap.get(destIP) || 0) + 1);
-        }
-      });
-      
-      // Convert to array and sort
-      const topIPs = Array.from(ipCountMap.entries())
-        .map(([address, count]) => ({ address, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-      
-      return {
-        filename,
-        size: fileSize,
-        timestamp: new Date().toISOString(),
-        summary: {
-          totalPackets: packetCount,
-          ipAddresses: ipAddresses.size,
-          conversationCount: conversations.size,
-          tcpPackets: protocolCounts['TCP'] || 0,
-          udpPackets: protocolCounts['UDP'] || 0,
-          icmpPackets: protocolCounts['ICMP'] || 0,
-          otherPackets: packetCount - ((protocolCounts['TCP'] || 0) + (protocolCounts['UDP'] || 0) + (protocolCounts['ICMP'] || 0)),
-          avgPacketSize,
-          medianPacketSize,
-          minPacketSize: packetSizes[0] || 0,
-          maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
-          captureDuration: formatDuration(duration),
-          startTime: new Date(minTimestamp * 1000).toISOString(),
-          endTime: new Date(maxTimestamp * 1000).toISOString(),
-          packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
-          topIPs,
-          protocolCounts: Object.entries(protocolCounts)
-            .map(([protocol, count]) => ({ protocol, count }))
-            .sort((a, b) => b.count - a.count)
-        },
-        packets,
-        protocols: Object.keys(protocolCounts),
-        protocolData,
-        timeSeriesData,
-        ipAddresses: Array.from(ipAddresses),
-        conversations: conversationsArray,
-        pcapVersion: `${versionMajor}.${versionMinor}`,
-        pcapInfo: {
-          timezone,
-          sigfigs,
-          snaplen,
-          network,
-          isLittleEndian
-        }
-      };
-    } catch (error) {
-      console.error('Error parsing PCAP data:', error);
-      throw new Error(`Failed to parse PCAP file: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+      
+    console.log(`Finished processing ${packetCount} packets`);
+    console.log(`Detected IP addresses: ${Array.from(ipAddresses).join(', ')}`);
+    console.log(`Detected protocols: ${Object.keys(protocolCounts).join(', ')}`);
+    console.log(`Conversation count: ${conversations.size}`);
+    
+    // Calculate statistics
+    const avgPacketSize = packetSizes.length > 0 
+      ? Math.round(packetSizes.reduce((sum, size) => sum + size, 0) / packetSizes.length) 
+      : 0;
+    
+    // Sort packet sizes for median calculation
+    packetSizes.sort((a, b) => a - b);
+    const medianPacketSize = packetSizes.length > 0 
+      ? packetSizes[Math.floor(packetSizes.length / 2)]
+      : 0;
+    
+    // Convert protocol counts to array for chart
+    const protocolData = Object.entries(protocolCounts).map(([name, value]) => ({
+      name,
+      value
+    }));
+    
+    // Generate time series data for visualization
+    const duration = maxTimestamp - minTimestamp;
+    const timeSeriesData = generateTimeSeriesData(packets, duration);
+    
+    // Format conversations with duration
+    const conversationsArray = Array.from(conversations.values()).map(conv => {
+      return {
+        ...conv,
+        duration: `${(conv.endTime - conv.startTime).toFixed(2)} sec`
+      };
+    });
+    
+    // Get top IPs by packet count
+    const ipCountMap = new Map();
+    packets.forEach(packet => {
+      // Extract IP without port
+      const sourceIP = packet.source?.split(':')?.[0] || packet.source;
+      const destIP = packet.destination?.split(':')?.[0] || packet.destination;
+      
+      if (sourceIP && sourceIP !== "Unknown") {
+        ipCountMap.set(sourceIP, (ipCountMap.get(sourceIP) || 0) + 1);
+      }
+      if (destIP && destIP !== "Unknown") {
+        ipCountMap.set(destIP, (ipCountMap.get(destIP) || 0) + 1);
+      }
+    });
+    
+    // Convert to array and sort
+    const topIPs = Array.from(ipCountMap.entries())
+      .map(([address, count]) => ({ address, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    
+    return {
+      filename,
+      size: fileSize,
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalPackets: packetCount,
+        ipAddresses: ipAddresses.size,
+        conversationCount: conversations.size,
+        tcpPackets: protocolCounts['TCP'] || 0,
+        udpPackets: protocolCounts['UDP'] || 0,
+        icmpPackets: protocolCounts['ICMP'] || 0,
+        otherPackets: packetCount - ((protocolCounts['TCP'] || 0) + (protocolCounts['UDP'] || 0) + (protocolCounts['ICMP'] || 0)),
+        avgPacketSize,
+        medianPacketSize,
+        minPacketSize: packetSizes[0] || 0,
+        maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
+        captureDuration: formatDuration(duration),
+        startTime: new Date(minTimestamp * 1000).toISOString(),
+        endTime: new Date(maxTimestamp * 1000).toISOString(),
+        packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
+        topIPs,
+        protocolCounts: Object.entries(protocolCounts)
+          .map(([protocol, count]) => ({ protocol, count }))
+          .sort((a, b) => b.count - a.count)
+      },
+      packets,
+      protocols: Object.keys(protocolCounts),
+      protocolData,
+      timeSeriesData,
+      ipAddresses: Array.from(ipAddresses),
+      conversations: conversationsArray,
+      pcapVersion: `${versionMajor}.${versionMinor}`,
+      pcapInfo: {
+        timezone,
+        sigfigs,
+        snaplen,
+        network,
+        isLittleEndian
+      }
+    };
+  } catch (error) {
+    console.error('Error parsing PCAP data:', error);
+    throw new Error(`Failed to parse PCAP file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 };
 
 /**
  * Parse PCAP-NG format files
  * This is a simplified implementation as PCAP-NG is much more complex
  */
-const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void) => {
+const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void): any => {
   console.log('Detected PCAP-NG format, processing block structure');
   
   // PCAP-NG variables
@@ -860,238 +861,246 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
   let offset = 0;
   let packetCount = 0;
   
-  while (offset + 12 <= dataView.byteLength) {
-    // Each block starts with type and length
-    const blockType = dataView.getUint32(offset, true);  // Always little-endian per specification
-    const blockTotalLength = dataView.getUint32(offset + 4, true);
-    
-    // Validate block size
-    if (blockTotalLength < 12 || offset + blockTotalLength > dataView.byteLength) {
-      console.warn(`Invalid block length at offset ${offset}: ${blockTotalLength}`);
-      break;
-    }
-    
-    // Process blocks based on type
-    switch(blockType) {
-      // Section Header Block
-      case SHB_TYPE:
-        if (blockTotalLength >= 28) {
-          const byteOrderMagic = dataView.getUint32(offset + 8, true);
-          const isLittleEndian = byteOrderMagic === 0x1a2b3c4d;
-          
-          if (!isLittleEndian && byteOrderMagic !== 0x4d3c2b1a) {
-            console.warn(`Invalid byte-order magic in SHB: 0x${byteOrderMagic.toString(16)}`);
+  try {
+    while (offset + 12 <= dataView.byteLength) {
+      // Each block starts with type and length
+      const blockType = dataView.getUint32(offset, true);  // Always little-endian per specification
+      const blockTotalLength = dataView.getUint32(offset + 4, true);
+      
+      // Validate block size
+      if (blockTotalLength < 12 || offset + blockTotalLength > dataView.byteLength) {
+        console.warn(`Invalid block length at offset ${offset}: ${blockTotalLength}`);
+        break;
+      }
+      
+      // Process blocks based on type
+      switch(blockType) {
+        // Section Header Block
+        case SHB_TYPE:
+          if (blockTotalLength >= 28) {
+            const byteOrderMagic = dataView.getUint32(offset + 8, true);
+            const isLittleEndian = byteOrderMagic === 0x1a2b3c4d;
+            
+            if (!isLittleEndian && byteOrderMagic !== 0x4d3c2b1a) {
+              console.warn(`Invalid byte-order magic in SHB: 0x${byteOrderMagic.toString(16)}`);
+            }
+            
+            const versionMajor = dataView.getUint16(offset + 12, isLittleEndian);
+            const versionMinor = dataView.getUint16(offset + 14, isLittleEndian);
+            console.log(`PCAP-NG version ${versionMajor}.${versionMinor}, endianness: ${isLittleEndian ? 'little' : 'big'}`);
           }
-          
-          const versionMajor = dataView.getUint16(offset + 12, isLittleEndian);
-          const versionMinor = dataView.getUint16(offset + 14, isLittleEndian);
-          console.log(`PCAP-NG version ${versionMajor}.${versionMinor}, endianness: ${isLittleEndian ? 'little' : 'big'}`);
-        }
-        break;
-      
-      // Interface Description Block
-      case IDB_TYPE:
-        if (blockTotalLength >= 20) {
-          const linkType = dataView.getUint16(offset + 8, true);
-          const snapLen = dataView.getUint32(offset + 12, true);
-          
-          interfaceDescriptions.push({
-            index: interfaceDescriptions.length,
-            linkType,
-            snapLen
-          });
-          
-          console.log(`Interface ${interfaceDescriptions.length-1}: link-type ${linkType}, snap length ${snapLen}`);
-        }
-        break;
-      
-      // Enhanced Packet Block
-      case EPB_TYPE:
-        if (blockTotalLength >= 32) {
-          try {
-            const interfaceId = dataView.getUint32(offset + 8, true);
-            const timestampHigh = dataView.getUint32(offset + 12, true);
-            const timestampLow = dataView.getUint32(offset + 16, true);
-            const capturedLen = dataView.getUint32(offset + 20, true);
-            const packetLen = dataView.getUint32(offset + 24, true);
+          break;
+        
+        // Interface Description Block
+        case IDB_TYPE:
+          if (blockTotalLength >= 20) {
+            const linkType = dataView.getUint16(offset + 8, true);
+            const snapLen = dataView.getUint32(offset + 12, true);
             
-            // Calculate timestamp (EPB uses 64-bit int)
-            // This is a simplification - proper handling depends on interface options
-            const timestamp = timestampHigh * 4294967296 + timestampLow; // 2^32
-            const timestampSec = timestamp / 1000000; // Assume microseconds
+            interfaceDescriptions.push({
+              index: interfaceDescriptions.length,
+              linkType,
+              snapLen
+            });
             
-            // Track timestamp range
-            minTimestamp = Math.min(minTimestamp, timestampSec);
-            maxTimestamp = Math.max(maxTimestamp, timestampSec);
+            console.log(`Interface ${interfaceDescriptions.length-1}: link-type ${linkType}, snap length ${snapLen}`);
+          }
+          break;
+        
+        // Enhanced Packet Block
+        case EPB_TYPE:
+          if (blockTotalLength >= 32) {
+            try {
+              const interfaceId = dataView.getUint32(offset + 8, true);
+              const timestampHigh = dataView.getUint32(offset + 12, true);
+              const timestampLow = dataView.getUint32(offset + 16, true);
+              const capturedLen = dataView.getUint32(offset + 20, true);
+              const packetLen = dataView.getUint32(offset + 24, true);
+              
+              // Calculate timestamp (EPB uses 64-bit int)
+              // This is a simplification - proper handling depends on interface options
+              const timestamp = timestampHigh * 4294967296 + timestampLow; // 2^32
+              const timestampSec = timestamp / 1000000; // Assume microseconds
+              
+              // Track timestamp range
+              minTimestamp = Math.min(minTimestamp, timestampSec);
+              maxTimestamp = Math.max(maxTimestamp, timestampSec);
+              
+              // Get interface info if available
+              const iface = interfaceDescriptions[interfaceId] || { linkType: 1 }; // Default to Ethernet
+              
+              // Parse packet based on link type (similar to parseActualPcapData)
+              let packetDetails: any = {
+                number: packetCount + 1,
+                time: timestampSec.toFixed(6),
+                relativeTime: '0.000000',
+                source: "Unknown",
+                destination: "Unknown",
+                protocol: "Unknown",
+                length: capturedLen,
+                info: '',
+                layers: [],
+                hexDump: '',
+                asciiDump: ''
+              };
+              
+              // Extract actual packet data (starts at offset + 28, aligned to 32 bits)
+              const packetDataOffset = offset + 28;
+              
+              // Create hex dump for debugging and display
+              const dumpBytes = Math.min(48, capturedLen);
+              packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
+              packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
+              
+              // Parse based on link type (only handling Ethernet for simplicity)
+              if (iface.linkType === 1 && capturedLen >= 14) {
+                packetDetails.layers.push("Ethernet");
+                
+                // Extract Ethernet header
+                const destMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + 6)));
+                const srcMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset + 6, packetDataOffset + 12)));
+                const etherType = dataView.getUint16(packetDataOffset + 12, false);
+                
+                packetDetails.ethernet = {
+                  destMac,
+                  srcMac,
+                  type: `0x${etherType.toString(16).padStart(4, '0')}`
+                };
+                
+                // Further parsing for IP, etc. (similar to parseActualPcapData)
+                if (etherType === 0x0800) { // IPv4
+                  packetDetails.protocol = "IPv4";
+                  packetDetails.layers.push("IPv4");
+                  protocolCounts["IPv4"] = (protocolCounts["IPv4"] || 0) + 1;
+                  
+                  // Parse IPv4 header if we have enough data
+                  if (capturedLen >= 14 + 20) {
+                    const ipVer = (dataView.getUint8(packetDataOffset + 14) >> 4) & 0xF;
+                    if (ipVer === 4) {
+                      const ipHeaderLength = (dataView.getUint8(packetDataOffset + 14) & 0x0F) * 4;
+                      const protocol = dataView.getUint8(packetDataOffset + 14 + 9);
+                      const sourceIP = formatIPv4(dataView, packetDataOffset + 14 + 12);
+                      const destIP = formatIPv4(dataView, packetDataOffset + 14 + 16);
+                      
+                      packetDetails.source = sourceIP;
+                      packetDetails.destination = destIP;
+                      ipAddresses.add(sourceIP);
+                      ipAddresses.add(destIP);
+                      
+                      // Protocol identification
+                      const protocolName = getProtocolName(protocol);
+                      packetDetails.protocol = protocolName;
+                      protocolCounts[protocolName] = (protocolCounts[protocolName] || 0) + 1;
+                      
+                      packetDetails.info = `${sourceIP} → ${destIP} (${protocolName})`;
+                      
+                      // For TCP and UDP, add port information
+                      const ipHeaderEnd = packetDataOffset + 14 + ipHeaderLength;
+                      
+                      if (protocol === 6 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // TCP
+                        const srcPort = dataView.getUint16(ipHeaderEnd, false);
+                        const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
+                        packetDetails.source = `${sourceIP}:${srcPort}`;
+                        packetDetails.destination = `${destIP}:${dstPort}`;
+                        packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (TCP)`;
+                      } else if (protocol === 17 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // UDP
+                        const srcPort = dataView.getUint16(ipHeaderEnd, false);
+                        const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
+                        packetDetails.source = `${sourceIP}:${srcPort}`;
+                        packetDetails.destination = `${destIP}:${dstPort}`;
+                        packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (UDP)`;
+                      }
+                    }
+                  }
+                } else if (etherType === 0x0806) { // ARP
+                  packetDetails.protocol = "ARP";
+                  packetDetails.layers.push("ARP");
+                  protocolCounts["ARP"] = (protocolCounts["ARP"] || 0) + 1;
+                  packetDetails.info = "ARP";
+                } else if (etherType === 0x86DD) { // IPv6
+                  packetDetails.protocol = "IPv6";
+                  packetDetails.layers.push("IPv6");
+                  protocolCounts["IPv6"] = (protocolCounts["IPv6"] || 0) + 1;
+                  packetDetails.info = "IPv6";
+                } else {
+                  packetDetails.protocol = `EtherType 0x${etherType.toString(16).padStart(4, '0')}`;
+                  protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
+                  packetDetails.info = `EtherType: 0x${etherType.toString(16).padStart(4, '0')}`;
+                }
+              } else {
+                packetDetails.protocol = `Link-type ${iface.linkType}`;
+                packetDetails.info = `Unsupported link-layer type: ${iface.linkType}`;
+                protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
+              }
+              
+              // Add packet to collection and update stats
+              packetSizes.push(capturedLen);
+              if (packetCount < 10000) {
+                packets.push(packetDetails);
+              }
+              
+              packetCount++;
+              
+              // Log progress occasionally
+              if (packetCount % 1000 === 0) {
+                console.log(`Processed ${packetCount} PCAP-NG packets...`);
+                if (progressCallback) {
+                  progressCallback(0.3 + (0.7 * Math.min(packetCount / 50000, 1)));
+                }
+              }
+            } catch (e) {
+              console.warn(`Error parsing EPB at offset ${offset}:`, e);
+            }
+          }
+          break;
+        
+        // Simple Packet Block (limited info)
+        case SPB_TYPE:
+          if (blockTotalLength >= 16) {
+            const packetLen = dataView.getUint32(offset + 8, true);
             
-            // Get interface info if available
-            const iface = interfaceDescriptions[interfaceId] || { linkType: 1 }; // Default to Ethernet
-            
-            // Parse packet based on link type (similar to parseActualPcapData)
-            let packetDetails: any = {
+            // Create simple packet representation
+            const packetDetails = {
               number: packetCount + 1,
-              time: timestampSec.toFixed(6),
-              relativeTime: '0.000000',
+              time: "0.000000",
+              relativeTime: "0.000000",
               source: "Unknown",
               destination: "Unknown",
               protocol: "Unknown",
-              length: capturedLen,
-              info: '',
-              layers: [],
-              hexDump: '',
-              asciiDump: ''
+              length: packetLen,
+              info: "Simple Packet (no timestamp)",
+              layers: ["Raw"],
+              hexDump: "",
+              asciiDump: ""
             };
             
-            // Extract actual packet data (starts at offset + 28, aligned to 32 bits)
-            const packetDataOffset = offset + 28;
-            
-            // Create hex dump for debugging and display
-            const dumpBytes = Math.min(48, capturedLen);
-            packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
-            packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
-            
-            // Parse based on link type (only handling Ethernet for simplicity)
-            if (iface.linkType === 1 && capturedLen >= 14) {
-              packetDetails.layers.push("Ethernet");
-              
-              // Extract Ethernet header
-              const destMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + 6)));
-              const srcMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset + 6, packetDataOffset + 12)));
-              const etherType = dataView.getUint16(packetDataOffset + 12, false);
-              
-              packetDetails.ethernet = {
-                destMac,
-                srcMac,
-                type: `0x${etherType.toString(16).padStart(4, '0')}`
-              };
-              
-              // Further parsing for IP, etc. (similar to parseActualPcapData)
-              if (etherType === 0x0800) { // IPv4
-                packetDetails.protocol = "IPv4";
-                packetDetails.layers.push("IPv4");
-                protocolCounts["IPv4"] = (protocolCounts["IPv4"] || 0) + 1;
-                
-                // Parse IPv4 header if we have enough data
-                if (capturedLen >= 14 + 20) {
-                  const ipVer = (dataView.getUint8(packetDataOffset + 14) >> 4) & 0xF;
-                  if (ipVer === 4) {
-                    const ipHeaderLength = (dataView.getUint8(packetDataOffset + 14) & 0x0F) * 4;
-                    const protocol = dataView.getUint8(packetDataOffset + 14 + 9);
-                    const sourceIP = formatIPv4(dataView, packetDataOffset + 14 + 12);
-                    const destIP = formatIPv4(dataView, packetDataOffset + 14 + 16);
-                    
-                    packetDetails.source = sourceIP;
-                    packetDetails.destination = destIP;
-                    ipAddresses.add(sourceIP);
-                    ipAddresses.add(destIP);
-                    
-                    // Protocol identification
-                    const protocolName = getProtocolName(protocol);
-                    packetDetails.protocol = protocolName;
-                    protocolCounts[protocolName] = (protocolCounts[protocolName] || 0) + 1;
-                    
-                    packetDetails.info = `${sourceIP} → ${destIP} (${protocolName})`;
-                    
-                    // For TCP and UDP, add port information
-                    const ipHeaderEnd = packetDataOffset + 14 + ipHeaderLength;
-                    
-                    if (protocol === 6 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // TCP
-                      const srcPort = dataView.getUint16(ipHeaderEnd, false);
-                      const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
-                      packetDetails.source = `${sourceIP}:${srcPort}`;
-                      packetDetails.destination = `${destIP}:${dstPort}`;
-                      packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (TCP)`;
-                    } else if (protocol === 17 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // UDP
-                      const srcPort = dataView.getUint16(ipHeaderEnd, false);
-                      const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
-                      packetDetails.source = `${sourceIP}:${srcPort}`;
-                      packetDetails.destination = `${destIP}:${dstPort}`;
-                      packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (UDP)`;
-                    }
-                  }
-                }
-              } else if (etherType === 0x0806) { // ARP
-                packetDetails.protocol = "ARP";
-                packetDetails.layers.push("ARP");
-                protocolCounts["ARP"] = (protocolCounts["ARP"] || 0) + 1;
-                packetDetails.info = "ARP";
-              } else if (etherType === 0x86DD) { // IPv6
-                packetDetails.protocol = "IPv6";
-                packetDetails.layers.push("IPv6");
-                protocolCounts["IPv6"] = (protocolCounts["IPv6"] || 0) + 1;
-                packetDetails.info = "IPv6";
-              } else {
-                packetDetails.protocol = `EtherType 0x${etherType.toString(16).padStart(4, '0')}`;
-                protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
-                packetDetails.info = `EtherType: 0x${etherType.toString(16).padStart(4, '0')}`;
-              }
-            } else {
-              packetDetails.protocol = `Link-type ${iface.linkType}`;
-              packetDetails.info = `Unsupported link-layer type: ${iface.linkType}`;
-              protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
-            }
+            // Add hex dump
+            const dumpBytes = Math.min(48, packetLen);
+            const dataOffset = offset + 12;
+            packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
+            packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
             
             // Add packet to collection and update stats
-            packetSizes.push(capturedLen);
+            packetSizes.push(packetLen);
             if (packetCount < 10000) {
               packets.push(packetDetails);
             }
             
             packetCount++;
-            
-            // Log progress occasionally
-            if (packetCount % 1000 === 0) {
-              console.log(`Processed ${packetCount} PCAP-NG packets...`);
-            }
-          } catch (e) {
-            console.warn(`Error parsing EPB at offset ${offset}:`, e);
           }
-        }
-        break;
+          break;
+        
+        default:
+          // Skip unknown block types
+          break;
+      }
       
-      // Simple Packet Block (limited info)
-      case SPB_TYPE:
-        if (blockTotalLength >= 16) {
-          const packetLen = dataView.getUint32(offset + 8, true);
-          
-          // Create simple packet representation
-          const packetDetails = {
-            number: packetCount + 1,
-            time: "0.000000",
-            relativeTime: "0.000000",
-            source: "Unknown",
-            destination: "Unknown",
-            protocol: "Unknown",
-            length: packetLen,
-            info: "Simple Packet (no timestamp)",
-            layers: ["Raw"],
-            hexDump: "",
-            asciiDump: ""
-          };
-          
-          // Add hex dump
-          const dumpBytes = Math.min(48, packetLen);
-          const dataOffset = offset + 12;
-          packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
-          packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
-          
-          // Add packet to collection and update stats
-          packetSizes.push(packetLen);
-          if (packetCount < 10000) {
-            packets.push(packetDetails);
-          }
-          
-          packetCount++;
-        }
-        break;
-      
-      default:
-        // Skip unknown block types
-        break;
+      // Move to next block
+      offset += blockTotalLength;
     }
-    
-    // Move to next block
-    offset += blockTotalLength;
+  } catch (error) {
+    console.error(`Error parsing PCAP-NG format:`, error);
+    // Continue with whatever packets we managed to parse
   }
   
   console.log(`Finished processing ${packetCount} PCAP-NG packets across ${interfaceDescriptions.length} interfaces`);
