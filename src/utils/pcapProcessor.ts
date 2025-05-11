@@ -19,7 +19,7 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
         
         // Process the PCAP data
         progressCallback?.(0.3);
-        const analysisData = await parseActualPcapData(file.name, buffer);
+        const analysisData = await parseActualPcapData(file.name, buffer, progressCallback);
         
         // Complete processing
         progressCallback?.(1.0);
@@ -43,7 +43,7 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
 /**
  * Parse actual PCAP binary data in the browser
  */
-const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promise<any> => {
+const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void): Promise<any> => {
   // Create a DataView to read binary data
   const dataView = new DataView(buffer);
   const fileSize = buffer.byteLength;
@@ -69,7 +69,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
     console.log(`Processing ${isPcapNg ? 'PCAPNG' : 'PCAP'} file: ${filename}, size: ${fileSize} bytes, endianness: ${isLittleEndian ? 'little' : (isBigEndian ? 'big' : 'N/A')}`);
     
     if (isPcapNg) {
-      return parsePcapNgFormat(dataView, fileSize, filename);
+      return parsePcapNgFormat(dataView, fileSize, filename, progressCallback);
     }
     
     // Parse standard PCAP format
@@ -702,243 +702,142 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
               console.log(`Packet #${packetCount + 1} Unknown EtherType: 0x${etherType.toString(16).padStart(4, '0')}`);
             }
           }
-        }
-        // Raw IP (network = 101)
-        else if (network === 101 && inclLen >= 20) {
-          const ipVer = (dataView.getUint8(offset) >> 4) & 0xF;
-          if (ipVer === 4) {
-            // Similar IP parsing as Ethernet, but starting directly at the IP header
-            packetDetails.protocol = "IPv4 (Raw)";
-            packetDetails.layers.push("IPv4");
-            protocolCounts["IPv4"] = (protocolCounts["IPv4"] || 0) + 1;
-            
-            const ipHeaderLength = (dataView.getUint8(offset) & 0x0F) * 4;
-            const totalLength = dataView.getUint16(offset + 2, true); // Assuming little-endian
-            const protocol = dataView.getUint8(offset + 9);
-            const sourceIP = formatIPv4(dataView, offset + 12);
-            const destIP = formatIPv4(dataView, offset + 16);
-            
-            // Add IPs to set and update packet details
-            ipAddresses.add(sourceIP);
-            ipAddresses.add(destIP);
-            
-            packetDetails.source = sourceIP;
-            packetDetails.destination = destIP;
-            packetDetails.ip = {
-              version: ipVer,
-              headerLength: ipHeaderLength,
-              protocol,
-              ttl: dataView.getUint8(offset + 8),
-              source: sourceIP,
-              destination: destIP
-            };
-            
-            packetDetails.info = `IPv4 ${sourceIP} → ${destIP} (${getProtocolName(protocol)})`;
+        
+          // Always set a relative time once we know the minimum timestamp
+          if (minTimestamp !== Number.MAX_VALUE && minTimestamp <= timestamp) {
+            packetDetails.relativeTime = (timestamp - minTimestamp).toFixed(6);
           }
-        } 
-        // IEEE 802.11 Wireless LAN (network = 105)
-        else if (network === 105) {
-          packetDetails.protocol = "802.11";
-          packetDetails.layers.push("802.11");
-          protocolCounts["802.11"] = (protocolCounts["802.11"] || 0) + 1;
-          packetDetails.info = "802.11 Wireless LAN frame";
-          
-          // Basic 802.11 frame control parsing
-          if (inclLen >= 2) {
-            const frameControl = dataView.getUint16(offset, true);
-            const frameType = (frameControl >> 2) & 0x03;
-            const frameSubtype = (frameControl >> 4) & 0x0F;
-            
-            let frameTypeDesc = "";
-            if (frameType === 0) frameTypeDesc = "Management";
-            else if (frameType === 1) frameTypeDesc = "Control";
-            else if (frameType === 2) frameTypeDesc = "Data";
-            else frameTypeDesc = "Extension";
-            
-            packetDetails.info = `802.11 ${frameTypeDesc} frame`;
+        
+          // Add packet size to statistics
+          packetSizes.push(inclLen);
+        
+          // Store the packet (limit to 1000 for browser performance)
+          if (packetCount < 10000) {
+            packets.push(packetDetails);
           }
-        }
-        // Linux cooked capture (network = 113)
-        else if (network === 113 && inclLen >= 16) {
-          packetDetails.protocol = "Linux Cooked";
-          packetDetails.layers.push("SLL");
-          protocolCounts["Linux Cooked"] = (protocolCounts["Linux Cooked"] || 0) + 1;
-          
-          // Linux cooked header (16 bytes)
-          const packetType = dataView.getUint16(offset, true);
-          const addressType = dataView.getUint16(offset + 2, true);
-          const addressLen = dataView.getUint16(offset + 4, true);
-          // Source address is 8 bytes at offset + 6
-          const protocol = dataView.getUint16(offset + 14, true);
-          
-          packetDetails.info = `Linux cooked capture, protocol type: 0x${protocol.toString(16)}`;
-          
-          // If it's IP after the SLL header
-          if (protocol === 0x0800 && inclLen >= 16 + 20) {
-            const ipOffset = offset + 16;
-            const ipVer = (dataView.getUint8(ipOffset) >> 4) & 0xF;
-            
-            if (ipVer === 4) {
-              // Parse IPv4 similar to other cases
-              packetDetails.protocol = "IPv4";
-              packetDetails.layers.push("IPv4");
-              protocolCounts["IPv4"] = (protocolCounts["IPv4"] || 0) + 1;
-              // IPv4 parsing would go here
-            }
+        
+          // Move to next packet
+          offset += inclLen;
+          packetCount++;
+        
+          // Log progress occasionally
+          if (packetCount % 1000 === 0) {
+            console.log(`Processed ${packetCount} packets...`);
+            progressCallback?.(0.3 + (0.7 * Math.min(packetCount / 50000, 1))); // Update progress
           }
+        } catch (error) {
+          console.error(`Error parsing packet at offset ${offset}:`, error);
+          // Try to recover and move to the next 16-byte boundary
+          offset = (Math.floor(offset / 16) + 1) * 16;
         }
-        // DOCSIS (network = 143)
-        else if (network === 143) {
-          packetDetails.protocol = "DOCSIS";
-          packetDetails.layers.push("DOCSIS");
-          protocolCounts["DOCSIS"] = (protocolCounts["DOCSIS"] || 0) + 1;
-          packetDetails.info = "DOCSIS MAC frame";
-        }
-        else {
-          // Unsupported link-layer type
-          packetDetails.protocol = `Link-type ${network}`;
-          packetDetails.info = `Unsupported link-layer type: ${network}`;
-          
-          if (packetCount < 3) {
-            console.log(`Packet #${packetCount + 1} Unsupported network type: ${network}`);
-          }
-        }
-        
-        // Always set a relative time once we know the minimum timestamp
-        if (minTimestamp !== Number.MAX_VALUE && minTimestamp <= timestamp) {
-          packetDetails.relativeTime = (timestamp - minTimestamp).toFixed(6);
-        }
-        
-        // Add packet size to statistics
-        packetSizes.push(inclLen);
-        
-        // Store the packet (limit to 1000 for browser performance)
-        if (packetCount < 10000) {
-          packets.push(packetDetails);
-        }
-        
-        // Move to next packet
-        offset += inclLen;
-        packetCount++;
-        
-        // Log progress occasionally
-        if (packetCount % 1000 === 0) {
-          console.log(`Processed ${packetCount} packets...`);
-          progressCallback?.(0.3 + (0.7 * Math.min(packetCount / 50000, 1))); // Update progress
-        }
-      } catch (error) {
-        console.error(`Error parsing packet at offset ${offset}:`, error);
-        // Try to recover and move to the next 16-byte boundary
-        offset = (Math.floor(offset / 16) + 1) * 16;
       }
-    }
-    
-    console.log(`Finished processing ${packetCount} packets`);
-    console.log(`Detected IP addresses: ${Array.from(ipAddresses).join(', ')}`);
-    console.log(`Detected protocols: ${Object.keys(protocolCounts).join(', ')}`);
-    console.log(`Conversation count: ${conversations.size}`);
-    
-    // Calculate statistics
-    const avgPacketSize = packetSizes.length > 0 
-      ? Math.round(packetSizes.reduce((sum, size) => sum + size, 0) / packetSizes.length) 
-      : 0;
-    
-    // Sort packet sizes for median calculation
-    packetSizes.sort((a, b) => a - b);
-    const medianPacketSize = packetSizes.length > 0 
-      ? packetSizes[Math.floor(packetSizes.length / 2)]
-      : 0;
-    
-    // Convert protocol counts to array for chart
-    const protocolData = Object.entries(protocolCounts).map(([name, value]) => ({
-      name,
-      value
-    }));
-    
-    // Generate time series data for visualization
-    const duration = maxTimestamp - minTimestamp;
-    const timeSeriesData = generateTimeSeriesData(packets, duration);
-    
-    // Format conversations with duration
-    const conversationsArray = Array.from(conversations.values()).map(conv => {
-      return {
-        ...conv,
-        duration: `${(conv.endTime - conv.startTime).toFixed(2)} sec`
-      };
-    });
-    
-    // Get top IPs by packet count
-    const ipCountMap = new Map();
-    packets.forEach(packet => {
-      // Extract IP without port
-      const sourceIP = packet.source?.split(':')?.[0] || packet.source;
-      const destIP = packet.destination?.split(':')?.[0] || packet.destination;
       
-      if (sourceIP && sourceIP !== "Unknown") {
-        ipCountMap.set(sourceIP, (ipCountMap.get(sourceIP) || 0) + 1);
-      }
-      if (destIP && destIP !== "Unknown") {
-        ipCountMap.set(destIP, (ipCountMap.get(destIP) || 0) + 1);
-      }
-    });
-    
-    // Convert to array and sort
-    const topIPs = Array.from(ipCountMap.entries())
-      .map(([address, count]) => ({ address, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-    
-    return {
-      filename,
-      size: fileSize,
-      timestamp: new Date().toISOString(),
-      summary: {
-        totalPackets: packetCount,
-        ipAddresses: ipAddresses.size,
-        conversationCount: conversations.size,
-        tcpPackets: protocolCounts['TCP'] || 0,
-        udpPackets: protocolCounts['UDP'] || 0,
-        icmpPackets: protocolCounts['ICMP'] || 0,
-        otherPackets: packetCount - ((protocolCounts['TCP'] || 0) + (protocolCounts['UDP'] || 0) + (protocolCounts['ICMP'] || 0)),
-        avgPacketSize,
-        medianPacketSize,
-        minPacketSize: packetSizes[0] || 0,
-        maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
-        captureDuration: formatDuration(duration),
-        startTime: new Date(minTimestamp * 1000).toISOString(),
-        endTime: new Date(maxTimestamp * 1000).toISOString(),
-        packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
-        topIPs,
-        protocolCounts: Object.entries(protocolCounts)
-          .map(([protocol, count]) => ({ protocol, count }))
-          .sort((a, b) => b.count - a.count)
-      },
-      packets,
-      protocols: Object.keys(protocolCounts),
-      protocolData,
-      timeSeriesData,
-      ipAddresses: Array.from(ipAddresses),
-      conversations: conversationsArray,
-      pcapVersion: `${versionMajor}.${versionMinor}`,
-      pcapInfo: {
-        timezone,
-        sigfigs,
-        snaplen,
-        network,
-        isLittleEndian
-      }
-    };
-  } catch (error) {
-    console.error('Error parsing PCAP data:', error);
-    throw new Error(`Failed to parse PCAP file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+      console.log(`Finished processing ${packetCount} packets`);
+      console.log(`Detected IP addresses: ${Array.from(ipAddresses).join(', ')}`);
+      console.log(`Detected protocols: ${Object.keys(protocolCounts).join(', ')}`);
+      console.log(`Conversation count: ${conversations.size}`);
+      
+      // Calculate statistics
+      const avgPacketSize = packetSizes.length > 0 
+        ? Math.round(packetSizes.reduce((sum, size) => sum + size, 0) / packetSizes.length) 
+        : 0;
+      
+      // Sort packet sizes for median calculation
+      packetSizes.sort((a, b) => a - b);
+      const medianPacketSize = packetSizes.length > 0 
+        ? packetSizes[Math.floor(packetSizes.length / 2)]
+        : 0;
+      
+      // Convert protocol counts to array for chart
+      const protocolData = Object.entries(protocolCounts).map(([name, value]) => ({
+        name,
+        value
+      }));
+      
+      // Generate time series data for visualization
+      const duration = maxTimestamp - minTimestamp;
+      const timeSeriesData = generateTimeSeriesData(packets, duration);
+      
+      // Format conversations with duration
+      const conversationsArray = Array.from(conversations.values()).map(conv => {
+        return {
+          ...conv,
+          duration: `${(conv.endTime - conv.startTime).toFixed(2)} sec`
+        };
+      });
+      
+      // Get top IPs by packet count
+      const ipCountMap = new Map();
+      packets.forEach(packet => {
+        // Extract IP without port
+        const sourceIP = packet.source?.split(':')?.[0] || packet.source;
+        const destIP = packet.destination?.split(':')?.[0] || packet.destination;
+        
+        if (sourceIP && sourceIP !== "Unknown") {
+          ipCountMap.set(sourceIP, (ipCountMap.get(sourceIP) || 0) + 1);
+        }
+        if (destIP && destIP !== "Unknown") {
+          ipCountMap.set(destIP, (ipCountMap.get(destIP) || 0) + 1);
+        }
+      });
+      
+      // Convert to array and sort
+      const topIPs = Array.from(ipCountMap.entries())
+        .map(([address, count]) => ({ address, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+      
+      return {
+        filename,
+        size: fileSize,
+        timestamp: new Date().toISOString(),
+        summary: {
+          totalPackets: packetCount,
+          ipAddresses: ipAddresses.size,
+          conversationCount: conversations.size,
+          tcpPackets: protocolCounts['TCP'] || 0,
+          udpPackets: protocolCounts['UDP'] || 0,
+          icmpPackets: protocolCounts['ICMP'] || 0,
+          otherPackets: packetCount - ((protocolCounts['TCP'] || 0) + (protocolCounts['UDP'] || 0) + (protocolCounts['ICMP'] || 0)),
+          avgPacketSize,
+          medianPacketSize,
+          minPacketSize: packetSizes[0] || 0,
+          maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
+          captureDuration: formatDuration(duration),
+          startTime: new Date(minTimestamp * 1000).toISOString(),
+          endTime: new Date(maxTimestamp * 1000).toISOString(),
+          packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
+          topIPs,
+          protocolCounts: Object.entries(protocolCounts)
+            .map(([protocol, count]) => ({ protocol, count }))
+            .sort((a, b) => b.count - a.count)
+        },
+        packets,
+        protocols: Object.keys(protocolCounts),
+        protocolData,
+        timeSeriesData,
+        ipAddresses: Array.from(ipAddresses),
+        conversations: conversationsArray,
+        pcapVersion: `${versionMajor}.${versionMinor}`,
+        pcapInfo: {
+          timezone,
+          sigfigs,
+          snaplen,
+          network,
+          isLittleEndian
+        }
+      };
+    } catch (error) {
+      console.error('Error parsing PCAP data:', error);
+      throw new Error(`Failed to parse PCAP file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 };
 
 /**
  * Parse PCAP-NG format files
  * This is a simplified implementation as PCAP-NG is much more complex
  */
-const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: string) => {
+const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void) => {
   console.log('Detected PCAP-NG format, processing block structure');
   
   // PCAP-NG variables
