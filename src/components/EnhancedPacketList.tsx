@@ -98,11 +98,17 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       case 'TCP': return 'text-cyber-primary';
       case 'UDP': return 'text-green-500';
       case 'ICMP': return 'text-orange-500';
+      case 'IGMP': return 'text-purple-600';
       case 'DNS': return 'text-cyber-secondary';
       case 'HTTP': return 'text-blue-500';
       case 'HTTPS': return 'text-emerald-400';
       case 'ARP': return 'text-purple-500';
       case 'IPV6': return 'text-pink-500';
+      case 'SSH': return 'text-yellow-600';
+      case 'SMTP': return 'text-cyan-500';
+      case 'FTP': return 'text-amber-500';
+      case 'DHCP': return 'text-indigo-500';
+      case 'NTP': return 'text-teal-500';
       default: return 'text-gray-400';
     }
   };

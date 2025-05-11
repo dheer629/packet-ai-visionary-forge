@@ -70,8 +70,8 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
           
           // Generate a summary of the packet capture using the selected model
           const packetSummary = `${analysisData.summary.totalPackets} packets captured between ${analysisData.summary.startTime} and ${analysisData.summary.endTime}. 
-          ${analysisData.summary.protocolCounts.map((p: any) => `${p.protocol}: ${p.count}`).join(', ')}. 
-          IP addresses involved: ${analysisData.summary.topIPs.slice(0, 5).map((ip: any) => ip.address).join(', ')}`;
+          ${analysisData.summary.protocolCounts?.map((p: any) => `${p.protocol}: ${p.count}`).join(', ') || ''}. 
+          IP addresses involved: ${analysisData.summary.topIPs?.slice(0, 5).map((ip: any) => ip.address).join(', ') || ''}`;
           
           const aiResponse = await callAIModel({
             providerId: aiProvider!,

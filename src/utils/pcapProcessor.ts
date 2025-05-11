@@ -252,6 +252,41 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                     packetDetails.layers.push("TLS");
                     protocolCounts["HTTPS"] = (protocolCounts["HTTPS"] || 0) + 1;
                     packetDetails.info = `HTTPS ${srcPort === 443 ? "Response" : "Request"}`;
+                  } else if (srcPort === 22 || dstPort === 22) {
+                    packetDetails.protocol = "SSH";
+                    packetDetails.layers.push("SSH");
+                    protocolCounts["SSH"] = (protocolCounts["SSH"] || 0) + 1;
+                    packetDetails.info = `SSH ${srcPort === 22 ? "Response" : "Request"}`;
+                  } else if (srcPort === 21 || dstPort === 21) {
+                    packetDetails.protocol = "FTP";
+                    packetDetails.layers.push("FTP");
+                    protocolCounts["FTP"] = (protocolCounts["FTP"] || 0) + 1;
+                    packetDetails.info = `FTP ${srcPort === 21 ? "Response" : "Request"}`;
+                  } else if (srcPort === 25 || dstPort === 25) {
+                    packetDetails.protocol = "SMTP";
+                    packetDetails.layers.push("SMTP");
+                    protocolCounts["SMTP"] = (protocolCounts["SMTP"] || 0) + 1;
+                    packetDetails.info = `SMTP ${srcPort === 25 ? "Response" : "Request"}`;
+                  } else if (srcPort === 110 || dstPort === 110) {
+                    packetDetails.protocol = "POP3";
+                    packetDetails.layers.push("POP3");
+                    protocolCounts["POP3"] = (protocolCounts["POP3"] || 0) + 1;
+                    packetDetails.info = `POP3 ${srcPort === 110 ? "Response" : "Request"}`;
+                  } else if (srcPort === 143 || dstPort === 143) {
+                    packetDetails.protocol = "IMAP";
+                    packetDetails.layers.push("IMAP");
+                    protocolCounts["IMAP"] = (protocolCounts["IMAP"] || 0) + 1;
+                    packetDetails.info = `IMAP ${srcPort === 143 ? "Response" : "Request"}`;
+                  } else if (srcPort === 20 || dstPort === 20) {
+                    packetDetails.protocol = "FTP-DATA";
+                    packetDetails.layers.push("FTP-DATA");
+                    protocolCounts["FTP-DATA"] = (protocolCounts["FTP-DATA"] || 0) + 1;
+                    packetDetails.info = `FTP Data ${srcPort === 20 ? "from server" : "to server"}`;
+                  } else if (srcPort === 23 || dstPort === 23) {
+                    packetDetails.protocol = "TELNET";
+                    packetDetails.layers.push("TELNET");
+                    protocolCounts["TELNET"] = (protocolCounts["TELNET"] || 0) + 1;
+                    packetDetails.info = `TELNET ${srcPort === 23 ? "Response" : "Request"}`;
                   } else {
                     packetDetails.info = `${srcPort} → ${dstPort} [${flagsStr}] Seq=${seqNum} Ack=${ackNum} Win=${packetDetails.tcp.window}`;
                   }
@@ -305,12 +340,37 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                     length
                   };
                   
-                  // Check for DNS (port 53)
+                  // Check for common UDP protocols
                   if (srcPort === 53 || dstPort === 53) {
                     packetDetails.protocol = "DNS";
                     packetDetails.layers.push("DNS");
                     protocolCounts["DNS"] = (protocolCounts["DNS"] || 0) + 1;
                     packetDetails.info = `${dstPort === 53 ? "Standard query" : "Standard response"}`;
+                  } else if (srcPort === 67 || srcPort === 68 || dstPort === 67 || dstPort === 68) {
+                    packetDetails.protocol = "DHCP";
+                    packetDetails.layers.push("DHCP");
+                    protocolCounts["DHCP"] = (protocolCounts["DHCP"] || 0) + 1;
+                    packetDetails.info = `DHCP ${(srcPort === 67 || dstPort === 67) ? "Server" : "Client"}`;
+                  } else if (srcPort === 123 || dstPort === 123) {
+                    packetDetails.protocol = "NTP";
+                    packetDetails.layers.push("NTP");
+                    protocolCounts["NTP"] = (protocolCounts["NTP"] || 0) + 1;
+                    packetDetails.info = `NTP ${srcPort === 123 ? "Server" : "Client"}`;
+                  } else if (srcPort === 161 || dstPort === 161 || srcPort === 162 || dstPort === 162) {
+                    packetDetails.protocol = "SNMP";
+                    packetDetails.layers.push("SNMP");
+                    protocolCounts["SNMP"] = (protocolCounts["SNMP"] || 0) + 1;
+                    packetDetails.info = `SNMP ${(srcPort === 161 || dstPort === 161) ? "Get/Set" : "Trap"}`;
+                  } else if (srcPort === 5060 || dstPort === 5060) {
+                    packetDetails.protocol = "SIP";
+                    packetDetails.layers.push("SIP");
+                    protocolCounts["SIP"] = (protocolCounts["SIP"] || 0) + 1;
+                    packetDetails.info = `SIP ${srcPort === 5060 ? "Response" : "Request"}`;
+                  } else if (srcPort === 514 || dstPort === 514) {
+                    packetDetails.protocol = "Syslog";
+                    packetDetails.layers.push("Syslog");
+                    protocolCounts["Syslog"] = (protocolCounts["Syslog"] || 0) + 1;
+                    packetDetails.info = `Syslog message`;
                   } else {
                     packetDetails.info = `${srcPort} → ${dstPort} Len=${length}`;
                   }
@@ -362,6 +422,45 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                     console.log(`Packet #${packetCount + 1} ICMP: ${sourceIP} -> ${destIP}, type=${type}, code=${code}`);
                   }
                 }
+                // IGMP
+                else if (protocol === 2 && ipHeaderEnd + 4 <= offset + inclLen) {
+                  packetDetails.layers.push("IGMP");
+                  packetDetails.protocol = "IGMP";
+                  protocolCounts["IGMP"] = (protocolCounts["IGMP"] || 0) + 1;
+                  
+                  const type = dataView.getUint8(ipHeaderEnd);
+                  packetDetails.info = `IGMP ${type === 0x11 ? "Membership Query" : 
+                                          (type === 0x16 ? "Membership Report" : 
+                                          (type === 0x17 ? "Leave Group" : `Type ${type}`))}`;
+                }
+                // ESP (50)
+                else if (protocol === 50) {
+                  packetDetails.layers.push("ESP");
+                  packetDetails.protocol = "ESP";
+                  protocolCounts["ESP"] = (protocolCounts["ESP"] || 0) + 1;
+                  packetDetails.info = "IPsec Encapsulating Security Payload";
+                }
+                // AH (51)
+                else if (protocol === 51) {
+                  packetDetails.layers.push("AH");
+                  packetDetails.protocol = "AH";
+                  protocolCounts["AH"] = (protocolCounts["AH"] || 0) + 1;
+                  packetDetails.info = "IPsec Authentication Header";
+                }
+                // GRE (47)
+                else if (protocol === 47) {
+                  packetDetails.layers.push("GRE");
+                  packetDetails.protocol = "GRE";
+                  protocolCounts["GRE"] = (protocolCounts["GRE"] || 0) + 1;
+                  packetDetails.info = "Generic Routing Encapsulation";
+                }
+                // SCTP (132)
+                else if (protocol === 132) {
+                  packetDetails.layers.push("SCTP");
+                  packetDetails.protocol = "SCTP";
+                  protocolCounts["SCTP"] = (protocolCounts["SCTP"] || 0) + 1;
+                  packetDetails.info = "Stream Control Transmission Protocol";
+                }
                 // Other IP protocols
                 else {
                   const protocolName = getProtocolName(protocol);
@@ -375,10 +474,45 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
                 packetDetails.layers.push("IPv6");
                 packetDetails.protocol = "IPv6";
                 protocolCounts["IPv6"] = (protocolCounts["IPv6"] || 0) + 1;
-                packetDetails.info = "IPv6 Packet";
                 
-                // Basic IPv6 header parsing could be added here
-                packetDetails.info = "IPv6 Packet (details not implemented)";
+                // Basic IPv6 header parsing (simplified)
+                const payloadLength = dataView.getUint16(offset + 14 + 4, false);
+                const nextHeader = dataView.getUint8(offset + 14 + 6); // Similar to IPv4's protocol field
+                const hopLimit = dataView.getUint8(offset + 14 + 7);
+                
+                // Source and destination addresses (16 bytes each)
+                const sourceIPv6 = formatIPv6(new Uint8Array(buffer.slice(offset + 14 + 8, offset + 14 + 24)));
+                const destIPv6 = formatIPv6(new Uint8Array(buffer.slice(offset + 14 + 24, offset + 14 + 40)));
+                
+                packetDetails.source = sourceIPv6;
+                packetDetails.destination = destIPv6;
+                ipAddresses.add(sourceIPv6);
+                ipAddresses.add(destIPv6);
+                
+                packetDetails.ipv6 = {
+                  payloadLength,
+                  nextHeader,
+                  hopLimit,
+                  source: sourceIPv6,
+                  destination: destIPv6
+                };
+                
+                packetDetails.info = `IPv6 ${sourceIPv6} → ${destIPv6}`;
+                
+                // Handle IPv6 extension headers and upper-layer protocols (simplified)
+                if (nextHeader === 6) { // TCP
+                  packetDetails.protocol = "TCP";
+                  packetDetails.layers.push("TCP");
+                  protocolCounts["TCP"] = (protocolCounts["TCP"] || 0) + 1;
+                } else if (nextHeader === 17) { // UDP
+                  packetDetails.protocol = "UDP";
+                  packetDetails.layers.push("UDP");
+                  protocolCounts["UDP"] = (protocolCounts["UDP"] || 0) + 1;
+                } else if (nextHeader === 58) { // ICMPv6
+                  packetDetails.protocol = "ICMPv6";
+                  packetDetails.layers.push("ICMPv6");
+                  protocolCounts["ICMPv6"] = (protocolCounts["ICMPv6"] || 0) + 1;
+                }
               }
             } catch (e) {
               console.warn(`Error parsing IP packet at offset ${offset}:`, e);
@@ -425,11 +559,138 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
             }
           }
           // IPv6 (0x86DD)
-          else if (etherType === 0x86DD) {
+          else if (etherType === 0x86DD && offset + 14 + 40 <= offset + inclLen) {
             packetDetails.layers.push("IPv6");
             packetDetails.protocol = "IPv6";
             protocolCounts["IPv6"] = (protocolCounts["IPv6"] || 0) + 1;
-            packetDetails.info = "IPv6 Packet";
+            
+            // Parse IPv6 header (40 bytes)
+            const ipv6VerClassFlow = dataView.getUint32(offset + 14, false);
+            const payloadLength = dataView.getUint16(offset + 14 + 4, false);
+            const nextHeader = dataView.getUint8(offset + 14 + 6);
+            const hopLimit = dataView.getUint8(offset + 14 + 7);
+            
+            // Source and destination addresses (16 bytes each)
+            const sourceIPv6 = formatIPv6(new Uint8Array(buffer.slice(offset + 14 + 8, offset + 14 + 24)));
+            const destIPv6 = formatIPv6(new Uint8Array(buffer.slice(offset + 14 + 24, offset + 14 + 40)));
+            
+            packetDetails.source = sourceIPv6;
+            packetDetails.destination = destIPv6;
+            ipAddresses.add(sourceIPv6);
+            ipAddresses.add(destIPv6);
+            
+            packetDetails.ipv6 = {
+              version: (ipv6VerClassFlow >> 28) & 0xF,
+              trafficClass: (ipv6VerClassFlow >> 20) & 0xFF,
+              flowLabel: ipv6VerClassFlow & 0xFFFFF,
+              payloadLength,
+              nextHeader,
+              hopLimit,
+              source: sourceIPv6,
+              destination: destIPv6
+            };
+            
+            // Basic info
+            packetDetails.info = `IPv6 ${sourceIPv6} → ${destIPv6}`;
+            
+            // Process upper-layer protocols based on Next Header field
+            const ipHeaderEnd = offset + 14 + 40;
+            let currentHeader = nextHeader;
+            let headerOffset = ipHeaderEnd;
+            let isExtensionHeader = true;
+            
+            // This is a simplified approach - proper IPv6 extension header handling would be more complex
+            if (nextHeader === 6 && headerOffset + 20 <= offset + inclLen) { // TCP
+              packetDetails.protocol = "TCP";
+              packetDetails.layers.push("TCP");
+              protocolCounts["TCP"] = (protocolCounts["TCP"] || 0) + 1;
+              // TCP header parsing would go here (similar to IPv4)
+            } else if (nextHeader === 17 && headerOffset + 8 <= offset + inclLen) { // UDP
+              packetDetails.protocol = "UDP";
+              packetDetails.layers.push("UDP");
+              protocolCounts["UDP"] = (protocolCounts["UDP"] || 0) + 1;
+              // UDP header parsing would go here (similar to IPv4)
+            } else if (nextHeader === 58 && headerOffset + 4 <= offset + inclLen) { // ICMPv6
+              packetDetails.protocol = "ICMPv6";
+              packetDetails.layers.push("ICMPv6");
+              protocolCounts["ICMPv6"] = (protocolCounts["ICMPv6"] || 0) + 1;
+              
+              const type = dataView.getUint8(headerOffset);
+              const code = dataView.getUint8(headerOffset + 1);
+              
+              packetDetails.icmpv6 = {
+                type,
+                code,
+                checksum: dataView.getUint16(headerOffset + 2, false)
+              };
+              
+              // ICMPv6 type descriptions
+              let typeName = "Unknown ICMPv6";
+              if (type === 1) typeName = "Destination Unreachable";
+              else if (type === 2) typeName = "Packet Too Big";
+              else if (type === 3) typeName = "Time Exceeded";
+              else if (type === 4) typeName = "Parameter Problem";
+              else if (type === 128) typeName = "Echo Request";
+              else if (type === 129) typeName = "Echo Reply";
+              else if (type === 133) typeName = "Router Solicitation";
+              else if (type === 134) typeName = "Router Advertisement";
+              else if (type === 135) typeName = "Neighbor Solicitation";
+              else if (type === 136) typeName = "Neighbor Advertisement";
+              
+              packetDetails.info = `ICMPv6 ${typeName}`;
+            }
+          }
+          // 802.1Q VLAN tagged frame (0x8100)
+          else if (etherType === 0x8100 && offset + 14 + 4 <= offset + inclLen) {
+            const vlanInfo = dataView.getUint16(offset + 14, false);
+            const vlanId = vlanInfo & 0x0FFF; // 12 bits VLAN ID
+            const priority = (vlanInfo >> 13) & 0x07; // 3 bits priority
+            const innerEtherType = dataView.getUint16(offset + 14 + 2, false);
+            
+            packetDetails.layers.push("802.1Q VLAN");
+            packetDetails.vlan = {
+              id: vlanId,
+              priority
+            };
+            
+            packetDetails.protocol = `VLAN (${vlanId})`;
+            protocolCounts[`VLAN`] = (protocolCounts[`VLAN`] || 0) + 1;
+            packetDetails.info = `VLAN ID: ${vlanId}, Priority: ${priority}, Type: 0x${innerEtherType.toString(16).padStart(4, '0')}`;
+          }
+          // PPPoE Discovery (0x8863) or Session (0x8864)
+          else if ((etherType === 0x8863 || etherType === 0x8864) && offset + 14 + 6 <= offset + inclLen) {
+            const isPPPoEDiscovery = etherType === 0x8863;
+            packetDetails.layers.push(isPPPoEDiscovery ? "PPPoE Discovery" : "PPPoE Session");
+            packetDetails.protocol = isPPPoEDiscovery ? "PPPoE-Discovery" : "PPPoE-Session";
+            protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
+            
+            const versionType = dataView.getUint8(offset + 14);
+            const code = dataView.getUint8(offset + 14 + 1);
+            const sessionId = dataView.getUint16(offset + 14 + 2, false);
+            const length = dataView.getUint16(offset + 14 + 4, false);
+            
+            packetDetails.pppoe = {
+              version: (versionType >> 4) & 0x0F,
+              type: versionType & 0x0F,
+              code,
+              sessionId,
+              length
+            };
+            
+            // PPPoE Discovery packet types
+            if (isPPPoEDiscovery) {
+              let codeDesc = "Unknown";
+              if (code === 0x09) codeDesc = "PADI (Discovery Initiation)";
+              else if (code === 0x07) codeDesc = "PADO (Discovery Offer)";
+              else if (code === 0x19) codeDesc = "PADR (Discovery Request)";
+              else if (code === 0x65) codeDesc = "PADS (Discovery Session-confirmation)";
+              else if (code === 0xa7) codeDesc = "PADT (Discovery Terminate)";
+              
+              packetDetails.info = `PPPoE ${codeDesc}, Session ID: ${sessionId}`;
+            } else {
+              // PPPoE Session packet
+              packetDetails.info = `PPPoE Session ${sessionId}, Length: ${length}`;
+            }
           }
           // Other EtherTypes
           else {
@@ -447,11 +708,92 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
           const ipVer = (dataView.getUint8(offset) >> 4) & 0xF;
           if (ipVer === 4) {
             // Similar IP parsing as Ethernet, but starting directly at the IP header
-            // Implementation omitted for brevity
             packetDetails.protocol = "IPv4 (Raw)";
             packetDetails.layers.push("IPv4");
+            protocolCounts["IPv4"] = (protocolCounts["IPv4"] || 0) + 1;
+            
+            const ipHeaderLength = (dataView.getUint8(offset) & 0x0F) * 4;
+            const totalLength = dataView.getUint16(offset + 2, true); // Assuming little-endian
+            const protocol = dataView.getUint8(offset + 9);
+            const sourceIP = formatIPv4(dataView, offset + 12);
+            const destIP = formatIPv4(dataView, offset + 16);
+            
+            // Add IPs to set and update packet details
+            ipAddresses.add(sourceIP);
+            ipAddresses.add(destIP);
+            
+            packetDetails.source = sourceIP;
+            packetDetails.destination = destIP;
+            packetDetails.ip = {
+              version: ipVer,
+              headerLength: ipHeaderLength,
+              protocol,
+              ttl: dataView.getUint8(offset + 8),
+              source: sourceIP,
+              destination: destIP
+            };
+            
+            packetDetails.info = `IPv4 ${sourceIP} → ${destIP} (${getProtocolName(protocol)})`;
           }
         } 
+        // IEEE 802.11 Wireless LAN (network = 105)
+        else if (network === 105) {
+          packetDetails.protocol = "802.11";
+          packetDetails.layers.push("802.11");
+          protocolCounts["802.11"] = (protocolCounts["802.11"] || 0) + 1;
+          packetDetails.info = "802.11 Wireless LAN frame";
+          
+          // Basic 802.11 frame control parsing
+          if (inclLen >= 2) {
+            const frameControl = dataView.getUint16(offset, true);
+            const frameType = (frameControl >> 2) & 0x03;
+            const frameSubtype = (frameControl >> 4) & 0x0F;
+            
+            let frameTypeDesc = "";
+            if (frameType === 0) frameTypeDesc = "Management";
+            else if (frameType === 1) frameTypeDesc = "Control";
+            else if (frameType === 2) frameTypeDesc = "Data";
+            else frameTypeDesc = "Extension";
+            
+            packetDetails.info = `802.11 ${frameTypeDesc} frame`;
+          }
+        }
+        // Linux cooked capture (network = 113)
+        else if (network === 113 && inclLen >= 16) {
+          packetDetails.protocol = "Linux Cooked";
+          packetDetails.layers.push("SLL");
+          protocolCounts["Linux Cooked"] = (protocolCounts["Linux Cooked"] || 0) + 1;
+          
+          // Linux cooked header (16 bytes)
+          const packetType = dataView.getUint16(offset, true);
+          const addressType = dataView.getUint16(offset + 2, true);
+          const addressLen = dataView.getUint16(offset + 4, true);
+          // Source address is 8 bytes at offset + 6
+          const protocol = dataView.getUint16(offset + 14, true);
+          
+          packetDetails.info = `Linux cooked capture, protocol type: 0x${protocol.toString(16)}`;
+          
+          // If it's IP after the SLL header
+          if (protocol === 0x0800 && inclLen >= 16 + 20) {
+            const ipOffset = offset + 16;
+            const ipVer = (dataView.getUint8(ipOffset) >> 4) & 0xF;
+            
+            if (ipVer === 4) {
+              // Parse IPv4 similar to other cases
+              packetDetails.protocol = "IPv4";
+              packetDetails.layers.push("IPv4");
+              protocolCounts["IPv4"] = (protocolCounts["IPv4"] || 0) + 1;
+              // IPv4 parsing would go here
+            }
+          }
+        }
+        // DOCSIS (network = 143)
+        else if (network === 143) {
+          packetDetails.protocol = "DOCSIS";
+          packetDetails.layers.push("DOCSIS");
+          protocolCounts["DOCSIS"] = (protocolCounts["DOCSIS"] || 0) + 1;
+          packetDetails.info = "DOCSIS MAC frame";
+        }
         else {
           // Unsupported link-layer type
           packetDetails.protocol = `Link-type ${network}`;
@@ -471,7 +813,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
         packetSizes.push(inclLen);
         
         // Store the packet (limit to 1000 for browser performance)
-        if (packetCount < 1000) {
+        if (packetCount < 10000) {
           packets.push(packetDetails);
         }
         
@@ -480,8 +822,9 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
         packetCount++;
         
         // Log progress occasionally
-        if (packetCount % 100 === 0) {
+        if (packetCount % 1000 === 0) {
           console.log(`Processed ${packetCount} packets...`);
+          progressCallback?.(0.3 + (0.7 * Math.min(packetCount / 50000, 1))); // Update progress
         }
       } catch (error) {
         console.error(`Error parsing packet at offset ${offset}:`, error);
@@ -524,6 +867,27 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
       };
     });
     
+    // Get top IPs by packet count
+    const ipCountMap = new Map();
+    packets.forEach(packet => {
+      // Extract IP without port
+      const sourceIP = packet.source?.split(':')?.[0] || packet.source;
+      const destIP = packet.destination?.split(':')?.[0] || packet.destination;
+      
+      if (sourceIP && sourceIP !== "Unknown") {
+        ipCountMap.set(sourceIP, (ipCountMap.get(sourceIP) || 0) + 1);
+      }
+      if (destIP && destIP !== "Unknown") {
+        ipCountMap.set(destIP, (ipCountMap.get(destIP) || 0) + 1);
+      }
+    });
+    
+    // Convert to array and sort
+    const topIPs = Array.from(ipCountMap.entries())
+      .map(([address, count]) => ({ address, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    
     return {
       filename,
       size: fileSize,
@@ -541,7 +905,13 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer): Promi
         minPacketSize: packetSizes[0] || 0,
         maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
         captureDuration: formatDuration(duration),
+        startTime: new Date(minTimestamp * 1000).toISOString(),
+        endTime: new Date(maxTimestamp * 1000).toISOString(),
         packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
+        topIPs,
+        protocolCounts: Object.entries(protocolCounts)
+          .map(([protocol, count]) => ({ protocol, count }))
+          .sort((a, b) => b.count - a.count)
       },
       packets,
       protocols: Object.keys(protocolCounts),
@@ -669,11 +1039,17 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
               length: capturedLen,
               info: '',
               layers: [],
-              hexDump: '' // Add this property to the packetDetails object
+              hexDump: '',
+              asciiDump: ''
             };
             
             // Extract actual packet data (starts at offset + 28, aligned to 32 bits)
             const packetDataOffset = offset + 28;
+            
+            // Create hex dump for debugging and display
+            const dumpBytes = Math.min(48, capturedLen);
+            packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
+            packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
             
             // Parse based on link type (only handling Ethernet for simplicity)
             if (iface.linkType === 1 && capturedLen >= 14) {
@@ -682,7 +1058,7 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
               // Extract Ethernet header
               const destMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + 6)));
               const srcMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset + 6, packetDataOffset + 12)));
-              const etherType = dataView.getUint16(packetDataOffset + 12, true);
+              const etherType = dataView.getUint16(packetDataOffset + 12, false);
               
               packetDetails.ethernet = {
                 destMac,
@@ -691,7 +1067,6 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
               };
               
               // Further parsing for IP, etc. (similar to parseActualPcapData)
-              // Simplified for brevity
               if (etherType === 0x0800) { // IPv4
                 packetDetails.protocol = "IPv4";
                 packetDetails.layers.push("IPv4");
@@ -701,6 +1076,8 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
                 if (capturedLen >= 14 + 20) {
                   const ipVer = (dataView.getUint8(packetDataOffset + 14) >> 4) & 0xF;
                   if (ipVer === 4) {
+                    const ipHeaderLength = (dataView.getUint8(packetDataOffset + 14) & 0x0F) * 4;
+                    const protocol = dataView.getUint8(packetDataOffset + 14 + 9);
                     const sourceIP = formatIPv4(dataView, packetDataOffset + 14 + 12);
                     const destIP = formatIPv4(dataView, packetDataOffset + 14 + 16);
                     
@@ -710,21 +1087,44 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
                     ipAddresses.add(destIP);
                     
                     // Protocol identification
-                    const protocol = dataView.getUint8(packetDataOffset + 14 + 9);
                     const protocolName = getProtocolName(protocol);
                     packetDetails.protocol = protocolName;
                     protocolCounts[protocolName] = (protocolCounts[protocolName] || 0) + 1;
                     
                     packetDetails.info = `${sourceIP} → ${destIP} (${protocolName})`;
+                    
+                    // For TCP and UDP, add port information
+                    const ipHeaderEnd = packetDataOffset + 14 + ipHeaderLength;
+                    
+                    if (protocol === 6 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // TCP
+                      const srcPort = dataView.getUint16(ipHeaderEnd, false);
+                      const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
+                      packetDetails.source = `${sourceIP}:${srcPort}`;
+                      packetDetails.destination = `${destIP}:${dstPort}`;
+                      packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (TCP)`;
+                    } else if (protocol === 17 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // UDP
+                      const srcPort = dataView.getUint16(ipHeaderEnd, false);
+                      const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
+                      packetDetails.source = `${sourceIP}:${srcPort}`;
+                      packetDetails.destination = `${destIP}:${dstPort}`;
+                      packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (UDP)`;
+                    }
                   }
                 }
               } else if (etherType === 0x0806) { // ARP
                 packetDetails.protocol = "ARP";
                 packetDetails.layers.push("ARP");
                 protocolCounts["ARP"] = (protocolCounts["ARP"] || 0) + 1;
+                packetDetails.info = "ARP";
+              } else if (etherType === 0x86DD) { // IPv6
+                packetDetails.protocol = "IPv6";
+                packetDetails.layers.push("IPv6");
+                protocolCounts["IPv6"] = (protocolCounts["IPv6"] || 0) + 1;
+                packetDetails.info = "IPv6";
               } else {
                 packetDetails.protocol = `EtherType 0x${etherType.toString(16).padStart(4, '0')}`;
                 protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
+                packetDetails.info = `EtherType: 0x${etherType.toString(16).padStart(4, '0')}`;
               }
             } else {
               packetDetails.protocol = `Link-type ${iface.linkType}`;
@@ -732,17 +1132,18 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
               protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
             }
             
-            // Add hex dump
-            const dumpBytes = Math.min(48, capturedLen);
-            packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
-            
             // Add packet to collection and update stats
             packetSizes.push(capturedLen);
-            if (packetCount < 1000) {
+            if (packetCount < 10000) {
               packets.push(packetDetails);
             }
             
             packetCount++;
+            
+            // Log progress occasionally
+            if (packetCount % 1000 === 0) {
+              console.log(`Processed ${packetCount} PCAP-NG packets...`);
+            }
           } catch (e) {
             console.warn(`Error parsing EPB at offset ${offset}:`, e);
           }
@@ -765,17 +1166,19 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
             length: packetLen,
             info: "Simple Packet (no timestamp)",
             layers: ["Raw"],
-            hexDump: "" // Add this property to ensure it exists
+            hexDump: "",
+            asciiDump: ""
           };
           
           // Add hex dump
           const dumpBytes = Math.min(48, packetLen);
           const dataOffset = offset + 12;
           packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
+          packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
           
           // Add packet to collection and update stats
           packetSizes.push(packetLen);
-          if (packetCount < 1000) {
+          if (packetCount < 10000) {
             packets.push(packetDetails);
           }
           
@@ -824,6 +1227,27 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
   const duration = maxTimestamp - minTimestamp;
   const timeSeriesData = generateTimeSeriesData(packets, duration);
   
+  // Get top IPs by packet count
+  const ipCountMap = new Map();
+  packets.forEach(packet => {
+    // Extract IP without port
+    const sourceIP = packet.source?.split(':')?.[0] || packet.source;
+    const destIP = packet.destination?.split(':')?.[0] || packet.destination;
+    
+    if (sourceIP && sourceIP !== "Unknown") {
+      ipCountMap.set(sourceIP, (ipCountMap.get(sourceIP) || 0) + 1);
+    }
+    if (destIP && destIP !== "Unknown") {
+      ipCountMap.set(destIP, (ipCountMap.get(destIP) || 0) + 1);
+    }
+  });
+  
+  // Convert to array and sort
+  const topIPs = Array.from(ipCountMap.entries())
+    .map(([address, count]) => ({ address, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  
   return {
     filename,
     size: fileSize,
@@ -842,7 +1266,13 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
       minPacketSize: packetSizes[0] || 0,
       maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
       captureDuration: formatDuration(duration),
+      startTime: new Date(minTimestamp * 1000).toISOString(),
+      endTime: new Date(maxTimestamp * 1000).toISOString(),
       packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
+      topIPs,
+      protocolCounts: Object.entries(protocolCounts)
+        .map(([protocol, count]) => ({ protocol, count }))
+        .sort((a, b) => b.count - a.count)
     },
     packets,
     protocols: Object.keys(protocolCounts),
@@ -868,6 +1298,66 @@ const formatMacAddress = (bytes: Uint8Array): string => {
  */
 const formatIPv4 = (view: DataView, offset: number): string => {
   return `${view.getUint8(offset)}.${view.getUint8(offset + 1)}.${view.getUint8(offset + 2)}.${view.getUint8(offset + 3)}`;
+};
+
+/**
+ * Format an IPv6 address from a byte array
+ */
+const formatIPv6 = (bytes: Uint8Array): string => {
+  // Group bytes into 16-bit words
+  const words: string[] = [];
+  for (let i = 0; i < bytes.length; i += 2) {
+    const word = (bytes[i] << 8) + bytes[i+1];
+    words.push(word.toString(16));
+  }
+  
+  // Find the longest run of zeros for compression
+  let longestZerosStart = -1;
+  let longestZerosLength = 0;
+  let currentZerosStart = -1;
+  let currentZerosLength = 0;
+  
+  for (let i = 0; i < words.length; i++) {
+    if (words[i] === '0') {
+      if (currentZerosStart === -1) {
+        currentZerosStart = i;
+        currentZerosLength = 1;
+      } else {
+        currentZerosLength++;
+      }
+    } else if (currentZerosStart !== -1) {
+      if (currentZerosLength > longestZerosLength) {
+        longestZerosStart = currentZerosStart;
+        longestZerosLength = currentZerosLength;
+      }
+      currentZerosStart = -1;
+      currentZerosLength = 0;
+    }
+  }
+  
+  // Check if the last sequence was zeros
+  if (currentZerosLength > longestZerosLength) {
+    longestZerosStart = currentZerosStart;
+    longestZerosLength = currentZerosLength;
+  }
+  
+  // Build the IPv6 string with compression if applicable
+  let result = '';
+  
+  if (longestZerosLength >= 2) { // Only compress if at least 2 consecutive zeros
+    for (let i = 0; i < words.length; i++) {
+      if (i === longestZerosStart) {
+        result += (i === 0 ? '' : ':') + ':';
+        i += longestZerosLength - 1; // Skip the run of zeros
+      } else {
+        result += (i === 0 ? '' : ':') + words[i];
+      }
+    }
+  } else {
+    result = words.join(':');
+  }
+  
+  return result;
 };
 
 /**
