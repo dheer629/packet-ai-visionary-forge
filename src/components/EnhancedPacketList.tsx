@@ -26,13 +26,15 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
   
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
+    if (packets.length === 0) return [];
+    
     return packets.filter(packet => {
       // Global search filter
       if (filter && 
           !Object.entries(packet).some(([key, val]) => {
             // Only search certain fields to improve performance
             if (['number', 'time', 'source', 'destination', 'protocol', 'info'].includes(key)) {
-              return val?.toString().toLowerCase().includes(filter.toLowerCase());
+              return String(val || '').toLowerCase().includes(filter.toLowerCase());
             }
             return false;
           })) {
@@ -41,19 +43,19 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       
       // Protocol filter
       if (filterOptions.protocol && 
-          !packet.protocol?.toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
+          !String(packet.protocol || '').toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
         return false;
       }
       
       // Source filter
       if (filterOptions.source && 
-          !packet.source?.includes(filterOptions.source)) {
+          !String(packet.source || '').includes(filterOptions.source)) {
         return false;
       }
       
       // Destination filter
       if (filterOptions.destination && 
-          !packet.destination?.includes(filterOptions.destination)) {
+          !String(packet.destination || '').includes(filterOptions.destination)) {
         return false;
       }
       
@@ -72,7 +74,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       // Flag filter (in info field or tcp.flags if available)
       if (filterOptions.flags) {
         const flagsLower = filterOptions.flags.toLowerCase();
-        const infoMatches = packet.info?.toLowerCase().includes(flagsLower);
+        const infoMatches = String(packet.info || '').toLowerCase().includes(flagsLower);
         const tcpFlagsMatch = packet.tcp?.flags?.toLowerCase().includes(flagsLower);
         
         if (!infoMatches && !tcpFlagsMatch) {
@@ -94,7 +96,8 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
   };
 
   const getProtocolColor = (protocol: string = "") => {
-    switch (protocol.toUpperCase()) {
+    const protocolUpper = String(protocol).toUpperCase();
+    switch (protocolUpper) {
       case 'TCP': return 'text-cyber-primary';
       case 'UDP': return 'text-green-500';
       case 'ICMP': return 'text-orange-500';
@@ -109,6 +112,11 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       case 'FTP': return 'text-amber-500';
       case 'DHCP': return 'text-indigo-500';
       case 'NTP': return 'text-teal-500';
+      case 'TLSV1': case 'TLSV1.2': case 'TLSV1.3': 
+        return 'text-emerald-500';
+      case 'LINK-TYPE 113':
+      case 'LINK-TYPE':
+        return 'text-gray-400';
       default: return 'text-gray-400';
     }
   };
@@ -198,10 +206,16 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPackets.length === 0 ? (
+              {!packets || packets.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-4 text-cyber-foreground/50">
-                    {packets.length === 0 ? 'No packet data available' : 'No packets match the current filters'}
+                    No packet data available
+                  </TableCell>
+                </TableRow>
+              ) : filteredPackets.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-4 text-cyber-foreground/50">
+                    No packets match the current filters
                   </TableCell>
                 </TableRow>
               ) : (

@@ -49,7 +49,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       let aiProvider = null;
       
       // Check for available AI providers in this order of preference
-      const preferredProviders = ['openai', 'anthropic', 'cohere', 'groq', 'google', 'deepseek'];
+      const preferredProviders = ['openai', 'anthropic', 'cohere', 'groq', 'deepseek'];
       
       for (const providerId of preferredProviders) {
         const providerKey = apiKeys.find((key: any) => key.providerId === providerId && key.value);
