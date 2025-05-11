@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -23,10 +23,16 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
     maxLength: '',
     flags: ''
   });
+
+  useEffect(() => {
+    if (packets.length > 0) {
+      console.log('First few packets received:', packets.slice(0, 3));
+    }
+  }, [packets]);
   
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
-    if (packets.length === 0) return [];
+    if (!packets || packets.length === 0) return [];
     
     return packets.filter(packet => {
       // Global search filter
@@ -219,9 +225,9 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredPackets.map((packet) => (
+                filteredPackets.map((packet, idx) => (
                   <TableRow 
-                    key={packet.number} 
+                    key={`packet-${idx}-${packet.number}`} 
                     className="border-cyber-border hover:bg-cyber-muted hover:bg-opacity-30 cursor-pointer"
                     onClick={() => handlePacketClick(packet)}
                   >

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import VisualizationChart from './VisualizationChart';
@@ -11,6 +11,16 @@ interface AnalysisPanelProps {
 }
 
 const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
+  useEffect(() => {
+    if (data) {
+      console.log('Analysis data received:', {
+        packetCount: data.packets?.length,
+        firstPacket: data.packets?.[0],
+        summary: data.summary
+      });
+    }
+  }, [data]);
+  
   if (!data) return <div>No analysis data available</div>;
 
   // Ensure we have valid data structure even if some fields are missing
@@ -33,13 +43,28 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
     timestamp: data.timestamp || null
   };
 
+  // Create protocol data for charts if it doesn't exist
+  if (!safeData.protocolData || safeData.protocolData.length === 0) {
+    // Extract protocol counts from packets if available
+    const protocolCounts: Record<string, number> = {};
+    safeData.packets.forEach(packet => {
+      const protocol = packet.protocol || 'Unknown';
+      protocolCounts[protocol] = (protocolCounts[protocol] || 0) + 1;
+    });
+    
+    safeData.protocolData = Object.entries(protocolCounts).map(([name, count]) => ({
+      name,
+      value: count
+    }));
+  }
+
   return (
     <div>
       <h2 className="text-xl font-bold mb-4 cyber-text">PCAP Analysis Results</h2>
       
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card className="cyber-box p-4 flex flex-col items-center justify-center bg-cyber-muted">
-          <div className="text-3xl font-bold cyber-text">{safeData.summary.totalPackets}</div>
+          <div className="text-3xl font-bold cyber-text">{safeData.summary.totalPackets || safeData.packets.length}</div>
           <div className="text-xs text-cyber-foreground">Total Packets</div>
         </Card>
         
@@ -54,7 +79,14 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
         </Card>
         
         <Card className="cyber-box p-4 flex flex-col items-center justify-center bg-cyber-muted">
-          <div className="text-3xl font-bold text-orange-500">{safeData.protocols.length}</div>
+          <div className="text-3xl font-bold text-orange-500">
+            {safeData.protocols.length || Object.keys(
+              safeData.packets.reduce((acc: Record<string, boolean>, p: any) => {
+                if (p.protocol) acc[p.protocol] = true;
+                return acc;
+              }, {})
+            ).length}
+          </div>
           <div className="text-xs text-cyber-foreground">Protocols</div>
         </Card>
       </div>

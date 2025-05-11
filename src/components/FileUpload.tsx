@@ -43,6 +43,24 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       const analysisData = await processPcapFile(file, progressCallback);
       console.log('PCAP processing complete:', analysisData.summary);
       
+      // Ensure we have properly formatted packet data with fallbacks for missing fields
+      if (analysisData.packets) {
+        analysisData.packets = analysisData.packets.map((packet: any, index: number) => {
+          // Ensure we have basic packet data with fallbacks
+          return {
+            number: packet.number || index + 1,
+            time: packet.time || packet.timestamp || '0.000000',
+            relativeTime: packet.relativeTime || packet.time || `${(index * 0.001).toFixed(6)}`,
+            source: packet.source || packet.srcIP || packet.src || 'Unknown',
+            destination: packet.destination || packet.dstIP || packet.dst || 'Unknown',
+            protocol: packet.protocol || packet.type || 'Unknown',
+            length: packet.length || packet.len || 0,
+            info: packet.info || `${packet.protocol || 'Unknown'} Packet`,
+            ...packet // preserve all other fields
+          };
+        });
+      }
+      
       // Check if we have API keys available for AI enhancement
       const apiKeys = JSON.parse(localStorage.getItem('nettracer-api-keys') || '[]');
       let aiProviderKey = null;
