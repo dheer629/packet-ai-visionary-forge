@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -32,9 +31,17 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
   
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
-    if (!packets || packets.length === 0) return [];
+    if (!packets || !Array.isArray(packets) || packets.length === 0) {
+      console.log('No packets or invalid packet array');
+      return [];
+    }
+    
+    console.log(`Filtering ${packets.length} packets with filter: ${filter}`);
     
     return packets.filter(packet => {
+      // Skip undefined packets
+      if (!packet) return false;
+      
       // Global search filter
       if (filter && 
           !Object.entries(packet).some(([key, val]) => {
@@ -66,13 +73,13 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       }
       
       // Min length filter
-      if (filterOptions.minLength && 
+      if (filterOptions.minLength && packet.length && 
           packet.length < parseInt(filterOptions.minLength)) {
         return false;
       }
       
       // Max length filter
-      if (filterOptions.maxLength && 
+      if (filterOptions.maxLength && packet.length && 
           packet.length > parseInt(filterOptions.maxLength)) {
         return false;
       }
@@ -212,7 +219,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
               </TableRow>
             </TableHeader>
             <TableBody>
-              {!packets || packets.length === 0 ? (
+              {!packets || !Array.isArray(packets) || packets.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-4 text-cyber-foreground/50">
                     No packet data available
@@ -227,18 +234,18 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
               ) : (
                 filteredPackets.map((packet, idx) => (
                   <TableRow 
-                    key={`packet-${idx}-${packet.number}`} 
+                    key={`packet-${idx}-${packet.number || idx}`} 
                     className="border-cyber-border hover:bg-cyber-muted hover:bg-opacity-30 cursor-pointer"
                     onClick={() => handlePacketClick(packet)}
                   >
-                    <TableCell className="font-mono">{packet.number}</TableCell>
+                    <TableCell className="font-mono">{packet.number || idx + 1}</TableCell>
                     <TableCell className="font-mono">{typeof packet.relativeTime === 'string' ? packet.relativeTime : packet.time}</TableCell>
                     <TableCell className="font-mono">{packet.source || 'Unknown'}</TableCell>
                     <TableCell className="font-mono">{packet.destination || 'Unknown'}</TableCell>
                     <TableCell className={`font-mono ${getProtocolColor(packet.protocol)}`}>
                       {packet.protocol || 'Unknown'}
                     </TableCell>
-                    <TableCell className="font-mono">{packet.length}</TableCell>
+                    <TableCell className="font-mono">{packet.length || 0}</TableCell>
                     <TableCell className="font-mono text-xs max-w-[200px] truncate">
                       {packet.info || (packet.protocol ? `${packet.protocol} Packet` : 'Raw Packet')}
                     </TableCell>

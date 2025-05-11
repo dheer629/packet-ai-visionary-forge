@@ -43,23 +43,71 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       const analysisData = await processPcapFile(file, progressCallback);
       console.log('PCAP processing complete:', analysisData.summary);
       
-      // Ensure we have properly formatted packet data with fallbacks for missing fields
-      if (analysisData.packets) {
+      // Generate unique IP list and counts
+      const uniqueIPs = new Set<string>();
+      const protocolCounts: Record<string, number> = {};
+      let conversationCount = 0;
+      
+      // Process packets to ensure proper data format
+      if (analysisData.packets && Array.isArray(analysisData.packets)) {
         analysisData.packets = analysisData.packets.map((packet: any, index: number) => {
+          // Track unique IPs
+          const src = packet.source || packet.srcIP || packet.src || 'Unknown';
+          const dst = packet.destination || packet.dstIP || packet.dst || 'Unknown';
+          
+          if (src !== 'Unknown') uniqueIPs.add(src.split(':')[0]); // Strip port if present
+          if (dst !== 'Unknown') uniqueIPs.add(dst.split(':')[0]);
+          
+          // Track protocol counts
+          const protocol = packet.protocol || packet.type || 'Unknown';
+          protocolCounts[protocol] = (protocolCounts[protocol] || 0) + 1;
+          
           // Ensure we have basic packet data with fallbacks
           return {
             number: packet.number || index + 1,
             time: packet.time || packet.timestamp || '0.000000',
             relativeTime: packet.relativeTime || packet.time || `${(index * 0.001).toFixed(6)}`,
-            source: packet.source || packet.srcIP || packet.src || 'Unknown',
-            destination: packet.destination || packet.dstIP || packet.dst || 'Unknown',
-            protocol: packet.protocol || packet.type || 'Unknown',
+            source: src,
+            destination: dst,
+            protocol: protocol,
             length: packet.length || packet.len || 0,
-            info: packet.info || `${packet.protocol || 'Unknown'} Packet`,
+            info: packet.info || `${protocol} Packet`,
             ...packet // preserve all other fields
           };
         });
+        
+        // Calculate conversations (unique src-dst pairs)
+        const conversations = new Set<string>();
+        analysisData.packets.forEach((packet: any) => {
+          const pair = `${packet.source}-${packet.destination}`;
+          const reversePair = `${packet.destination}-${packet.source}`;
+          if (!conversations.has(pair) && !conversations.has(reversePair)) {
+            conversations.add(pair);
+          }
+        });
+        conversationCount = conversations.size;
       }
+      
+      // Update summary with computed values
+      if (!analysisData.summary) {
+        analysisData.summary = {};
+      }
+      
+      analysisData.summary.totalPackets = analysisData.packets?.length || 0;
+      analysisData.summary.ipAddresses = uniqueIPs.size;
+      analysisData.summary.conversationCount = conversationCount;
+      
+      // Add protocol counts to summary
+      analysisData.summary.protocolCounts = Object.entries(protocolCounts).map(([protocol, count]) => ({
+        protocol,
+        count
+      }));
+      
+      // Add protocol data for charts
+      analysisData.protocolData = Object.entries(protocolCounts).map(([name, count]) => ({
+        name,
+        value: count
+      }));
       
       // Check if we have API keys available for AI enhancement
       const apiKeys = JSON.parse(localStorage.getItem('nettracer-api-keys') || '[]');
