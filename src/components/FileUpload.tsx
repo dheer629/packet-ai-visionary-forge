@@ -41,7 +41,15 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       
       let analysisData = await processPcapFile(file, progressCallback);
       
-      console.log('PCAP processing complete. Raw data:', analysisData);
+      console.log('PCAP processing complete. Sample data:', 
+        analysisData?.packets?.slice(0, 3).map((p: any) => ({
+          number: p.number,
+          time: p.time,
+          source: p.source,
+          destination: p.destination,
+          protocol: p.protocol
+        }))
+      );
       
       // Ensure we have a properly structured data object
       if (!analysisData) {
@@ -49,13 +57,12 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
         analysisData = { packets: [], summary: {} };
       }
       
-      // CRITICAL: Enhance the data structure to ensure proper packet decoding
+      // CRITICAL: Preserve all the raw data fields from the processor
       if (analysisData.packets) {
         console.log(`Processing ${analysisData.packets.length} packets for proper display`);
         
-        // Normalize and enhance packet data
+        // Simply normalize the packets but keep all original fields
         analysisData.packets = analysisData.packets.map((packet: any, index: number) => {
-          // If packet is undefined or null, create a default packet
           if (!packet) {
             console.warn(`Packet at index ${index} is undefined or null`);
             return {
@@ -69,43 +76,23 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
             };
           }
           
-          // Ensure all expected fields are present with proper default values
-          const enhancedPacket = {
-            // Number should be incremental if not provided
+          // Don't override the original fields, just ensure all expected fields are present
+          return {
+            ...packet,
+            // Only provide defaults for missing fields
             number: packet.number || index + 1,
-            
-            // Time can come from multiple possible fields
             time: packet.time || packet.timestamp || packet.relativeTime || (index * 0.001).toFixed(6),
             relativeTime: packet.relativeTime || packet.time || (index * 0.001).toFixed(6),
-            
-            // Network addresses
-            source: packet.source || packet.srcIP || packet.src || 'Unknown',
-            destination: packet.destination || packet.dstIP || packet.dst || 'Unknown',
-            
-            // Protocol identification
-            protocol: packet.protocol || packet.type || 'Unknown',
-            
-            // Packet metadata
-            length: packet.length || packet.len || 0,
-            info: packet.info || `${packet.protocol || 'Unknown'} Packet`,
-            
-            // Preserve all original data
-            ...packet,
-            
-            // Add detailed decoded fields if they exist
-            _decoded: packet._decoded || packet.decoded || null,
-            
-            // Add raw hex data if available
-            rawHex: packet.rawHex || packet.hex || null,
-            
-            // Add raw data if available
-            rawData: packet.rawData || packet.data || null
+            source: packet.source || packet.srcIP || packet.src || packet['ip.src'] || 'Unknown',
+            destination: packet.destination || packet.dstIP || packet.dst || packet['ip.dst'] || 'Unknown',
+            protocol: packet.protocol || packet.type || packet._source?.layers?.frame?.['frame.protocols'] || 'Unknown',
+            length: packet.length || packet.len || packet._source?.layers?.frame?.['frame.len'] || 0,
+            info: packet.info || packet.summary || `${packet.protocol || 'Unknown'} Packet`
           };
-          
-          return enhancedPacket;
         });
         
-        console.log('Enhanced packet data sample:', analysisData.packets.slice(0, 2));
+        // Log a couple of sample packets for debugging
+        console.log('Enhanced packet data sample:', analysisData.packets.slice(0, 3));
       } else {
         console.warn('No packet data found in analysis result, creating default packets');
         
@@ -245,11 +232,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
           ipAddresses: analysisData.summary.ipAddresses,
           conversationCount: analysisData.summary.conversationCount,
           protocols: Object.keys(protocolCounts).length
-        },
-        packetCount: analysisData.packets.length,
-        hasTimeSeriesData: Boolean(analysisData.timeSeriesData?.length),
-        hasProtocolData: Boolean(analysisData.protocolData?.length),
-        hasConversations: Boolean(analysisData.conversations?.length)
+        }
       });
       
       // Check if we have API keys available for AI enhancement

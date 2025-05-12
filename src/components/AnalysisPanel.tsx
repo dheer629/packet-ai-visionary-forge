@@ -16,9 +16,15 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
       console.log('Analysis data received in AnalysisPanel:', {
         summary: data.summary || {},
         packetCount: data.packets?.length || 0,
-        firstPacket: data.packets?.[0] || null,
+        firstPacket: data.packets?.[0] ? {
+          number: data.packets[0].number,
+          time: data.packets[0].time,
+          source: data.packets[0].source,
+          protocol: data.packets[0].protocol
+        } : null,
         hasProtocolData: Boolean(data.protocolData?.length),
-        hasTimeSeriesData: Boolean(data.timeSeriesData?.length)
+        hasTimeSeriesData: Boolean(data.timeSeriesData?.length),
+        hasWiresharkFormat: Boolean(data.packets?.[0]?._source?.layers)
       });
     }
   }, [data]);
@@ -72,12 +78,6 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
       value: Math.floor(Math.random() * 10) + 1 // Just for visualization purposes
     }));
   }
-
-  console.log('Safe analysis data ready for rendering:', {
-    summaryTotalPackets: safeData.summary.totalPackets,
-    uniqueProtocolCount: uniqueProtocols.size,
-    packetCount: safeData.packets.length
-  });
 
   return (
     <div>

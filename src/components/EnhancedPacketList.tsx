@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -29,13 +30,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       first3Packets: packets?.slice(0, 3).map(p => ({
         number: p.number,
         time: p.time,
-        source: p.source,
-        destination: p.destination,
-        protocol: p.protocol,
+        source: p.source || p.srcIP || p.src || p['ip.src'],
+        destination: p.destination || p.dstIP || p.dst || p['ip.dst'],
+        protocol: p.protocol || p.type,
         length: p.length,
         info: p.info
       })),
-      validArray: Array.isArray(packets)
+      validArray: Array.isArray(packets),
+      hasLayers: packets?.some(p => p._source?.layers)
     });
   }, [packets]);
   
@@ -60,18 +62,65 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
         };
       }
       
+      // Extract data from Wireshark JSON format if available
+      let source = packet.source || 'Unknown';
+      let destination = packet.destination || 'Unknown'; 
+      let protocol = packet.protocol || 'Unknown';
+      let info = packet.info || 'Unknown Packet';
+      
+      // Try to extract from _source.layers if available (Wireshark JSON format)
+      if (packet._source?.layers) {
+        const layers = packet._source.layers;
+        
+        // IP layer
+        if (layers.ip) {
+          source = layers.ip['ip.src'] || source;
+          destination = layers.ip['ip.dst'] || destination;
+        }
+        
+        // Extract TCP/UDP port info if available
+        if (layers.tcp) {
+          source = source + ':' + (layers.tcp['tcp.srcport'] || '');
+          destination = destination + ':' + (layers.tcp['tcp.dstport'] || '');
+          protocol = 'TCP';
+          info = `${layers.tcp['tcp.flags_tree']?.['tcp.flags.syn'] === '1' ? 'SYN ' : ''}${layers.tcp['tcp.flags_tree']?.['tcp.flags.ack'] === '1' ? 'ACK ' : ''}${layers.tcp['tcp.flags_tree']?.['tcp.flags.fin'] === '1' ? 'FIN ' : ''}[${layers.tcp['tcp.seq'] || ''}]`;
+        } else if (layers.udp) {
+          source = source + ':' + (layers.udp['udp.srcport'] || '');
+          destination = destination + ':' + (layers.udp['udp.dstport'] || '');
+          protocol = 'UDP';
+        }
+        
+        // Get highest layer protocol
+        if (layers.http) {
+          protocol = 'HTTP';
+          info = layers.http['http.request.method'] 
+            ? `${layers.http['http.request.method']} ${layers.http['http.request.uri']}`
+            : layers.http['http.response.code'] 
+              ? `HTTP ${layers.http['http.response.code']} ${layers.http['http.response.phrase']}`
+              : 'HTTP Packet';
+        } else if (layers.dns) {
+          protocol = 'DNS';
+          info = layers.dns['dns.qry.name'] ? `Query: ${layers.dns['dns.qry.name']}` : 'DNS Packet';
+        }
+        
+        // Use frame protocol if we still don't have a good protocol
+        if (protocol === 'Unknown' && layers.frame?.['frame.protocols']) {
+          const protocols = layers.frame['frame.protocols'].split(':');
+          protocol = protocols[protocols.length - 1].toUpperCase();
+        }
+      }
+      
       // Clean and normalize packet data
       return {
+        ...packet, // Keep all original data
         number: packet.number || index + 1,
         time: packet.time || packet.timestamp || packet.relativeTime || '0.000000',
         relativeTime: packet.relativeTime || packet.time || '0.000000',
-        source: packet.source || packet.srcIP || packet.src || 'Unknown',
-        destination: packet.destination || packet.dstIP || packet.dst || 'Unknown',
-        protocol: packet.protocol || packet.type || 'Unknown',
-        length: packet.length || packet.len || 0,
-        info: packet.info || `${packet.protocol || 'Unknown'} Packet`,
-        // Keep all original fields
-        ...packet
+        source: source,
+        destination: destination,
+        protocol: protocol,
+        length: packet.length || packet.len || packet._source?.layers?.frame?.['frame.len'] || 0,
+        info: info
       };
     });
   }, [packets]);
@@ -134,7 +183,8 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       if (filterOptions.flags) {
         const flagsLower = filterOptions.flags.toLowerCase();
         const infoMatches = String(packet.info || '').toLowerCase().includes(flagsLower);
-        const tcpFlagsMatch = packet.tcp?.flags?.toLowerCase().includes(flagsLower);
+        const tcpFlagsMatch = packet.tcp?.flags?.toLowerCase().includes(flagsLower) || 
+                             packet._source?.layers?.tcp?.['tcp.flags_tree']?.toString().toLowerCase().includes(flagsLower);
         
         if (!infoMatches && !tcpFlagsMatch) {
           return false;
