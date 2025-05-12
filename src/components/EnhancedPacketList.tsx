@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -24,21 +25,31 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
   });
 
   useEffect(() => {
-    if (packets.length > 0) {
-      console.log('First few packets received:', packets.slice(0, 3));
+    console.log('EnhancedPacketList received packets:', {
+      packetCount: packets?.length || 0, 
+      first3Packets: packets?.slice(0, 3) || [],
+      validArray: Array.isArray(packets)
+    });
+  }, [packets]);
+  
+  // Ensure we have a valid packets array
+  const safePackets = useMemo(() => {
+    if (!packets || !Array.isArray(packets)) {
+      console.warn('Invalid packets data received in EnhancedPacketList');
+      return [];
     }
+    return packets;
   }, [packets]);
   
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
-    if (!packets || !Array.isArray(packets) || packets.length === 0) {
-      console.log('No packets or invalid packet array');
+    if (!safePackets || safePackets.length === 0) {
       return [];
     }
     
-    console.log(`Filtering ${packets.length} packets with filter: ${filter}`);
+    console.log(`Filtering ${safePackets.length} packets with filter: ${filter}`);
     
-    return packets.filter(packet => {
+    return safePackets.filter(packet => {
       // Skip undefined packets
       if (!packet) return false;
       
@@ -97,7 +108,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       
       return true;
     });
-  }, [packets, filter, filterOptions]);
+  }, [safePackets, filter, filterOptions]);
 
   const handlePacketClick = (packet: any) => {
     setSelectedPacket(packet);
@@ -219,7 +230,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
               </TableRow>
             </TableHeader>
             <TableBody>
-              {!packets || !Array.isArray(packets) || packets.length === 0 ? (
+              {!safePackets || safePackets.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-4 text-cyber-foreground/50">
                     No packet data available
