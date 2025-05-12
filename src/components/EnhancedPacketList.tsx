@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -27,7 +26,15 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
   useEffect(() => {
     console.log('EnhancedPacketList received packets:', {
       packetCount: packets?.length || 0, 
-      first3Packets: packets?.slice(0, 3) || [],
+      first3Packets: packets?.slice(0, 3).map(p => ({
+        number: p.number,
+        time: p.time,
+        source: p.source,
+        destination: p.destination,
+        protocol: p.protocol,
+        length: p.length,
+        info: p.info
+      })),
       validArray: Array.isArray(packets)
     });
   }, [packets]);
@@ -38,7 +45,35 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       console.warn('Invalid packets data received in EnhancedPacketList');
       return [];
     }
-    return packets;
+    
+    // Process packets to ensure all required fields are available
+    return packets.map((packet, index) => {
+      if (!packet) {
+        return {
+          number: index + 1,
+          time: '0.000000',
+          source: 'Unknown',
+          destination: 'Unknown',
+          protocol: 'Unknown',
+          length: 0,
+          info: 'Invalid Packet'
+        };
+      }
+      
+      // Clean and normalize packet data
+      return {
+        number: packet.number || index + 1,
+        time: packet.time || packet.timestamp || packet.relativeTime || '0.000000',
+        relativeTime: packet.relativeTime || packet.time || '0.000000',
+        source: packet.source || packet.srcIP || packet.src || 'Unknown',
+        destination: packet.destination || packet.dstIP || packet.dst || 'Unknown',
+        protocol: packet.protocol || packet.type || 'Unknown',
+        length: packet.length || packet.len || 0,
+        info: packet.info || `${packet.protocol || 'Unknown'} Packet`,
+        // Keep all original fields
+        ...packet
+      };
+    });
   }, [packets]);
   
   // Filter packets based on search term and filters - memoized for performance
@@ -138,6 +173,8 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       case 'NTP': return 'text-teal-500';
       case 'TLSV1': case 'TLSV1.2': case 'TLSV1.3': 
         return 'text-emerald-500';
+      case 'ETHERNET': case 'ETH': return 'text-blue-300';
+      case 'IP': case 'IPV4': return 'text-blue-500';
       case 'LINK-TYPE 113':
       case 'LINK-TYPE':
         return 'text-gray-400';

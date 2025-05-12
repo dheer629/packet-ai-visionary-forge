@@ -40,67 +40,92 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       };
       
       let analysisData = await processPcapFile(file, progressCallback);
-      console.log('PCAP processing complete:', analysisData);
+      
+      console.log('PCAP processing complete. Raw data:', analysisData);
       
       // Ensure we have a properly structured data object
       if (!analysisData) {
+        console.warn('No analysis data returned from processor');
         analysisData = { packets: [], summary: {} };
       }
       
-      // Ensure we have packets array
-      if (!analysisData.packets || !Array.isArray(analysisData.packets) || analysisData.packets.length === 0) {
-        // In case we don't have packets, let's create a manual fallback
-        // This is a temporary solution to ensure the UI doesn't break
-        console.warn('No packets found in processed data, creating fallback data');
+      // CRITICAL: Enhance the data structure to ensure proper packet decoding
+      if (analysisData.packets) {
+        console.log(`Processing ${analysisData.packets.length} packets for proper display`);
         
-        // Create fallback data using what looks like manually generated data
-        analysisData.packets = Array.from({ length: 20 }).map((_, idx) => ({
+        // Normalize and enhance packet data
+        analysisData.packets = analysisData.packets.map((packet: any, index: number) => {
+          // If packet is undefined or null, create a default packet
+          if (!packet) {
+            console.warn(`Packet at index ${index} is undefined or null`);
+            return {
+              number: index + 1,
+              time: (index * 0.001).toFixed(6),
+              source: 'Unknown',
+              destination: 'Unknown',
+              protocol: 'Unknown',
+              length: 0,
+              info: 'Missing Packet Data'
+            };
+          }
+          
+          // Ensure all expected fields are present with proper default values
+          const enhancedPacket = {
+            // Number should be incremental if not provided
+            number: packet.number || index + 1,
+            
+            // Time can come from multiple possible fields
+            time: packet.time || packet.timestamp || packet.relativeTime || (index * 0.001).toFixed(6),
+            relativeTime: packet.relativeTime || packet.time || (index * 0.001).toFixed(6),
+            
+            // Network addresses
+            source: packet.source || packet.srcIP || packet.src || 'Unknown',
+            destination: packet.destination || packet.dstIP || packet.dst || 'Unknown',
+            
+            // Protocol identification
+            protocol: packet.protocol || packet.type || 'Unknown',
+            
+            // Packet metadata
+            length: packet.length || packet.len || 0,
+            info: packet.info || `${packet.protocol || 'Unknown'} Packet`,
+            
+            // Preserve all original data
+            ...packet,
+            
+            // Add detailed decoded fields if they exist
+            _decoded: packet._decoded || packet.decoded || null,
+            
+            // Add raw hex data if available
+            rawHex: packet.rawHex || packet.hex || null,
+            
+            // Add raw data if available
+            rawData: packet.rawData || packet.data || null
+          };
+          
+          return enhancedPacket;
+        });
+        
+        console.log('Enhanced packet data sample:', analysisData.packets.slice(0, 2));
+      } else {
+        console.warn('No packet data found in analysis result, creating default packets');
+        
+        // Create default packets if none exist
+        analysisData.packets = Array.from({ length: 10 }).map((_, idx) => ({
           number: idx + 1,
           time: (idx * 0.001).toFixed(6),
           source: 'Unknown',
           destination: 'Unknown',
           protocol: 'Unknown',
           length: idx % 2 === 0 ? 78 : 196,
-          info: 'Unknown Packet'
+          info: 'Default Packet'
         }));
-      } else {
-        // Process packets to ensure proper data format
-        analysisData.packets = analysisData.packets.map((packet: any, index: number) => {
-          // Define default values
-          const defaultPacket = {
-            number: index + 1,
-            time: (index * 0.001).toFixed(6),
-            source: 'Unknown',
-            destination: 'Unknown',
-            protocol: 'Unknown',
-            length: 78,
-            info: 'Unknown Packet'
-          };
-          
-          // If packet is null or undefined, return default
-          if (!packet) return defaultPacket;
-          
-          // Extract values with fallbacks
-          return {
-            number: packet.number || index + 1,
-            time: packet.time || packet.timestamp || packet.relativeTime || defaultPacket.time,
-            relativeTime: packet.relativeTime || packet.time || defaultPacket.time,
-            source: packet.source || packet.srcIP || packet.src || defaultPacket.source,
-            destination: packet.destination || packet.dstIP || packet.dst || defaultPacket.destination,
-            protocol: packet.protocol || packet.type || defaultPacket.protocol,
-            length: packet.length || packet.len || defaultPacket.length,
-            info: packet.info || `${packet.protocol || defaultPacket.protocol} Packet`,
-            ...packet // preserve all other fields if they exist
-          };
-        });
       }
 
-      // Generate unique IP list and counts
+      // Generate comprehensive packet summary data
       const uniqueIPs = new Set<string>();
       const protocolCounts: Record<string, number> = {};
       const conversations = new Set<string>();
       
-      // Process packet data to extract useful information
       analysisData.packets.forEach((packet: any) => {
         // Track unique IPs
         const src = packet.source || 'Unknown';
@@ -121,7 +146,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
         }
       });
       
-      // Update summary with computed values
+      // Complete summary with computed values
       if (!analysisData.summary) {
         analysisData.summary = {};
       }
@@ -148,9 +173,9 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       if (!analysisData.timeSeriesData || !analysisData.timeSeriesData.length) {
         const timeIntervals = 10; // Split into 10 time intervals
         const startTime = parseFloat(analysisData.summary.startTime);
-        const endTime = parseFloat(analysisData.summary.endTime);
-        const timeRange = endTime - startTime;
-        const intervalSize = timeRange / timeIntervals || 0.001; // Avoid division by zero
+        const endTime = parseFloat(analysisData.summary.endTime) || startTime + 1;
+        const timeRange = endTime - startTime || 1; // Avoid division by zero
+        const intervalSize = timeRange / timeIntervals;
         
         const timeSeriesData = Array(timeIntervals).fill(0).map((_, i) => {
           const intervalStart = startTime + (i * intervalSize);
@@ -185,7 +210,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
               endpointB: dst,
               packetCount: 1,
               bytes: packet.length || 0,
-              duration: '0s', // We'll calculate this later
+              duration: '0s',
               startTime: packet.time || '0',
               endTime: packet.time || '0'
             });
@@ -209,46 +234,22 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
         analysisData.conversations = conversationList;
       }
       
-      // Generate top IPs if they don't exist
-      if (!analysisData.summary.topIPs) {
-        const ipCounts = new Map();
-        
-        analysisData.packets.forEach((packet: any) => {
-          const src = packet.source?.split(':')[0];
-          const dst = packet.destination?.split(':')[0];
-          
-          if (src && src !== 'Unknown') {
-            ipCounts.set(src, (ipCounts.get(src) || 0) + 1);
-          }
-          
-          if (dst && dst !== 'Unknown') {
-            ipCounts.set(dst, (ipCounts.get(dst) || 0) + 1);
-          }
-        });
-        
-        analysisData.summary.topIPs = Array.from(ipCounts.entries())
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(([address, count]) => ({ address, count }));
-      }
-      
       // Add metadata if missing
-      if (!analysisData.filename) {
-        analysisData.filename = file.name;
-      }
+      analysisData.filename = file.name;
+      analysisData.size = file.size;
+      analysisData.timestamp = Date.now();
       
-      if (!analysisData.size) {
-        analysisData.size = file.size;
-      }
-      
-      if (!analysisData.timestamp) {
-        analysisData.timestamp = Date.now();
-      }
-      
-      console.log('Enhanced analysis data:', {
-        summary: analysisData.summary,
+      console.log('Enhanced analysis data prepared successfully:', {
+        summary: {
+          totalPackets: analysisData.summary.totalPackets,
+          ipAddresses: analysisData.summary.ipAddresses,
+          conversationCount: analysisData.summary.conversationCount,
+          protocols: Object.keys(protocolCounts).length
+        },
         packetCount: analysisData.packets.length,
-        firstPacket: analysisData.packets[0] || null
+        hasTimeSeriesData: Boolean(analysisData.timeSeriesData?.length),
+        hasProtocolData: Boolean(analysisData.protocolData?.length),
+        hasConversations: Boolean(analysisData.conversations?.length)
       });
       
       // Check if we have API keys available for AI enhancement
@@ -268,6 +269,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
         }
       }
       
+      // AI enhancement if keys are available
       if (aiProviderKey && aiProviderKey.value && aiProviderKey.selectedModel) {
         try {
           setAiEnrichment(true);
@@ -321,6 +323,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
         }
       }
       
+      // Send the enhanced data to the parent component
       onFileUpload(analysisData);
       
       toast({
