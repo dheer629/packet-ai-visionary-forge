@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload } from 'lucide-react';
@@ -41,7 +42,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       
       let analysisData = await processPcapFile(file, progressCallback);
       
-      console.log('PCAP processing complete. Sample data:', 
+      console.log('PCAP processing complete. First few packets:', 
         analysisData?.packets?.slice(0, 3).map((p: any) => ({
           number: p.number,
           time: p.time,
@@ -50,6 +51,7 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
           protocol: p.protocol
         }))
       );
+      console.log('Total packet count:', analysisData?.packets?.length || 0);
       
       // Ensure we have a properly structured data object
       if (!analysisData) {
@@ -76,22 +78,142 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
             };
           }
           
-          // Don't override the original fields, just ensure all expected fields are present
-          return {
+          // Enhanced packet data extraction
+          let enhancedPacket = {
             ...packet,
-            // Only provide defaults for missing fields
             number: packet.number || index + 1,
             time: packet.time || packet.timestamp || packet.relativeTime || (index * 0.001).toFixed(6),
             relativeTime: packet.relativeTime || packet.time || (index * 0.001).toFixed(6),
-            source: packet.source || packet.srcIP || packet.src || packet['ip.src'] || 'Unknown',
-            destination: packet.destination || packet.dstIP || packet.dst || packet['ip.dst'] || 'Unknown',
-            protocol: packet.protocol || packet.type || packet._source?.layers?.frame?.['frame.protocols'] || 'Unknown',
-            length: packet.length || packet.len || packet._source?.layers?.frame?.['frame.len'] || 0,
-            info: packet.info || packet.summary || `${packet.protocol || 'Unknown'} Packet`
           };
+          
+          // Process Wireshark JSON format if available
+          if (packet._source?.layers) {
+            const layers = packet._source.layers;
+            
+            // Extract source and destination
+            if (layers.ip) {
+              enhancedPacket.source = layers.ip['ip.src'] || packet.source || 'Unknown';
+              enhancedPacket.destination = layers.ip['ip.dst'] || packet.destination || 'Unknown';
+            } else {
+              enhancedPacket.source = packet.source || packet.srcIP || packet.src || 'Unknown';
+              enhancedPacket.destination = packet.destination || packet.dstIP || packet.dst || 'Unknown';
+            }
+            
+            // Extract protocol information
+            if (layers.tcp) {
+              enhancedPacket.protocol = 'TCP';
+              
+              // Add port information
+              if (layers.tcp['tcp.srcport']) {
+                enhancedPacket.source = `${enhancedPacket.source}:${layers.tcp['tcp.srcport']}`;
+              }
+              
+              if (layers.tcp['tcp.dstport']) {
+                enhancedPacket.destination = `${enhancedPacket.destination}:${layers.tcp['tcp.dstport']}`;
+              }
+              
+              // Extract flags
+              const flags = [];
+              if (layers.tcp['tcp.flags_tree']) {
+                if (layers.tcp['tcp.flags_tree']['tcp.flags.syn'] === '1') flags.push('SYN');
+                if (layers.tcp['tcp.flags_tree']['tcp.flags.ack'] === '1') flags.push('ACK');
+                if (layers.tcp['tcp.flags_tree']['tcp.flags.psh'] === '1') flags.push('PSH');
+                if (layers.tcp['tcp.flags_tree']['tcp.flags.fin'] === '1') flags.push('FIN');
+                if (layers.tcp['tcp.flags_tree']['tcp.flags.rst'] === '1') flags.push('RST');
+                if (layers.tcp['tcp.flags_tree']['tcp.flags.urg'] === '1') flags.push('URG');
+              }
+              
+              // Construct info field
+              const seqNum = layers.tcp['tcp.seq'] || '';
+              const ackNum = layers.tcp['tcp.ack'] || '';
+              const winSize = layers.tcp['tcp.window_size'] || '';
+              const len = layers.tcp['tcp.len'] || '';
+              
+              enhancedPacket.info = `${flags.join(' ')} Seq=${seqNum} Ack=${ackNum} Win=${winSize} Len=${len}`;
+              enhancedPacket.length = parseInt(layers.tcp['tcp.len'] || layers.frame?.['frame.len'] || '0');
+            }
+            else if (layers.udp) {
+              enhancedPacket.protocol = 'UDP';
+              
+              if (layers.udp['udp.srcport']) {
+                enhancedPacket.source = `${enhancedPacket.source}:${layers.udp['udp.srcport']}`;
+              }
+              
+              if (layers.udp['udp.dstport']) {
+                enhancedPacket.destination = `${enhancedPacket.destination}:${layers.udp['udp.dstport']}`;
+              }
+              
+              enhancedPacket.length = parseInt(layers.udp['udp.length'] || layers.frame?.['frame.len'] || '0');
+              enhancedPacket.info = `${enhancedPacket.source} → ${enhancedPacket.destination} Len=${enhancedPacket.length}`;
+            }
+            else if (layers.http) {
+              enhancedPacket.protocol = 'HTTP';
+              if (layers.http['http.request.method']) {
+                enhancedPacket.info = `${layers.http['http.request.method']} ${layers.http['http.request.uri'] || ''}`;
+              } else if (layers.http['http.response.code']) {
+                enhancedPacket.info = `HTTP ${layers.http['http.response.code']} ${layers.http['http.response.phrase'] || ''}`;
+              } else {
+                enhancedPacket.info = 'HTTP Packet';
+              }
+            }
+            else if (layers.dns) {
+              enhancedPacket.protocol = 'DNS';
+              if (layers.dns['dns.qry.name']) {
+                enhancedPacket.info = `Query: ${layers.dns['dns.qry.name']}`;
+              } else {
+                enhancedPacket.info = 'DNS Response';
+              }
+            }
+            else if (layers.arp) {
+              enhancedPacket.protocol = 'ARP';
+              if (layers.arp['arp.opcode'] === '1') {
+                enhancedPacket.info = `Who has ${layers.arp['arp.dst.proto_ipv4'] || '?'} Tell ${layers.arp['arp.src.proto_ipv4'] || '?'}`;
+              } else {
+                enhancedPacket.info = `${layers.arp['arp.src.hw_mac'] || '?'} is at ${layers.arp['arp.src.proto_ipv4'] || '?'}`;
+              }
+            }
+            else if (layers.tls) {
+              if (layers.tls['tls.record.version']) {
+                if (layers.tls['tls.record.version'] === '0x0303') enhancedPacket.protocol = 'TLSv1.2';
+                else if (layers.tls['tls.record.version'] === '0x0304') enhancedPacket.protocol = 'TLSv1.3';
+                else if (layers.tls['tls.record.version'] === '0x0301') enhancedPacket.protocol = 'TLSv1';
+              } else {
+                enhancedPacket.protocol = 'TLS';
+              }
+              enhancedPacket.info = 'Application Data';
+            }
+            else if (layers.ssh) {
+              enhancedPacket.protocol = 'SSH';
+              enhancedPacket.info = 'SSH Protocol';
+            }
+            
+            // Frame information for all packets
+            if (layers.frame) {
+              if (!enhancedPacket.protocol || enhancedPacket.protocol === 'Unknown') {
+                const protocols = layers.frame['frame.protocols']?.split(':') || [];
+                enhancedPacket.protocol = protocols[protocols.length - 1]?.toUpperCase() || 'Unknown';
+              }
+              
+              enhancedPacket.length = parseInt(layers.frame['frame.len'] || '0');
+              
+              // Make sure we have an info field
+              if (!enhancedPacket.info) {
+                enhancedPacket.info = layers.frame['frame.protocols'] || 
+                                       `${enhancedPacket.protocol} Packet`;
+              }
+            }
+          } else {
+            // Basic packet fields if no _source.layers
+            enhancedPacket.source = packet.source || packet.srcIP || packet.src || packet['ip.src'] || 'Unknown';
+            enhancedPacket.destination = packet.destination || packet.dstIP || packet.dst || packet['ip.dst'] || 'Unknown';
+            enhancedPacket.protocol = packet.protocol || packet.type || 'Unknown';
+            enhancedPacket.length = packet.length || packet.len || 0;
+            enhancedPacket.info = packet.info || packet.summary || `${enhancedPacket.protocol} Packet`;
+          }
+          
+          return enhancedPacket;
         });
         
-        // Log a couple of sample packets for debugging
         console.log('Enhanced packet data sample:', analysisData.packets.slice(0, 3));
       } else {
         console.warn('No packet data found in analysis result, creating default packets');
@@ -151,10 +273,12 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       }));
       
       // Add protocol data for charts
-      analysisData.protocolData = Object.entries(protocolCounts).map(([name, count]) => ({
-        name,
-        value: count
-      }));
+      analysisData.protocolData = Object.entries(protocolCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({
+          name,
+          value: count
+        }));
       
       // Generate time series data if it doesn't exist
       if (!analysisData.timeSeriesData || !analysisData.timeSeriesData.length) {

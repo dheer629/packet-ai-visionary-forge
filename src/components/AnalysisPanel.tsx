@@ -34,7 +34,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
   // Ensure we have valid data structure even if some fields are missing
   const safeData = {
     summary: {
-      totalPackets: data.summary?.totalPackets || data.packets?.length || 0,
+      totalPackets: data.packets?.length || 0,
       ipAddresses: data.summary?.ipAddresses || 0,
       conversationCount: data.summary?.conversationCount || 0,
       startTime: data.summary?.startTime || '',
@@ -51,7 +51,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
     timestamp: data.timestamp || Date.now()
   };
 
-  // Create protocol data for charts if it doesn't exist
+  // Create protocol data for charts if it doesn't exist or is incomplete
   if (!safeData.protocolData || safeData.protocolData.length === 0) {
     // Extract protocol counts from packets if available
     const protocolCounts: Record<string, number> = {};
@@ -60,10 +60,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
       protocolCounts[protocol] = (protocolCounts[protocol] || 0) + 1;
     });
     
-    safeData.protocolData = Object.entries(protocolCounts).map(([name, count]) => ({
-      name,
-      value: count
-    }));
+    safeData.protocolData = Object.entries(protocolCounts)
+      .sort((a, b) => b[1] - a[1]) // Sort by count descending
+      .map(([name, count]) => ({
+        name,
+        value: count
+      }));
   }
 
   // Generate unique protocol count 
@@ -73,10 +75,45 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
 
   // Create empty time series data if it doesn't exist
   if (!safeData.timeSeriesData || safeData.timeSeriesData.length === 0) {
-    safeData.timeSeriesData = Array(10).fill(0).map((_, i) => ({
-      time: `${i * 10}%`,
-      value: Math.floor(Math.random() * 10) + 1 // Just for visualization purposes
-    }));
+    // Instead of random data, divide packets into time segments
+    const timeIntervals = 10;
+    const packetCount = safeData.packets.length;
+    
+    if (packetCount > 0 && safeData.packets[0].time) {
+      const firstPacketTime = parseFloat(safeData.packets[0].time);
+      const lastPacketTime = parseFloat(safeData.packets[packetCount - 1].time);
+      const duration = lastPacketTime - firstPacketTime;
+      
+      if (duration > 0) {
+        // Create time intervals
+        safeData.timeSeriesData = Array(timeIntervals).fill(0).map((_, i) => {
+          const startTime = firstPacketTime + (i * duration / timeIntervals);
+          const endTime = startTime + (duration / timeIntervals);
+          
+          // Count packets in this time range
+          const count = safeData.packets.filter(p => {
+            const time = parseFloat(p.time);
+            return time >= startTime && time < endTime;
+          }).length;
+          
+          return {
+            time: `${Math.round((i / timeIntervals) * 100)}%`,
+            value: count
+          };
+        });
+      } else {
+        // Default time series if we can't calculate a meaningful one
+        safeData.timeSeriesData = Array(timeIntervals).fill(0).map((_, i) => ({
+          time: `${i * 10}%`,
+          value: Math.ceil(packetCount / timeIntervals)
+        }));
+      }
+    } else {
+      safeData.timeSeriesData = Array(10).fill(0).map((_, i) => ({
+        time: `${i * 10}%`,
+        value: Math.floor(Math.random() * 10) + 1 // Just for visualization purposes
+      }));
+    }
   }
 
   return (
@@ -85,7 +122,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
       
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card className="cyber-box p-4 flex flex-col items-center justify-center bg-cyber-muted">
-          <div className="text-3xl font-bold cyber-text">{safeData.summary.totalPackets}</div>
+          <div className="text-3xl font-bold cyber-text">{safeData.packets.length.toLocaleString()}</div>
           <div className="text-xs text-cyber-foreground">Total Packets</div>
         </Card>
         
@@ -124,7 +161,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
             <VisualizationChart 
               type="pie" 
               title="Protocol Distribution" 
-              data={safeData.protocolData || []} 
+              data={safeData.protocolData.slice(0, 10) || []} 
               dataKey="value"
             />
             
@@ -190,6 +227,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
                     </div>
                   </>
                 )}
+                
+                <Separator className="bg-cyber-border" />
+                <div className="flex justify-between">
+                  <span className="text-cyber-foreground">Total Packets:</span>
+                  <span className="font-mono">{safeData.packets.length.toLocaleString()}</span>
+                </div>
               </div>
             </div>
           </div>

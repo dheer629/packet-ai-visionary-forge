@@ -23,6 +23,9 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
     maxLength: '',
     flags: ''
   });
+  const [page, setPage] = useState(0);
+  const pageSize = 100; // Show 100 packets per page
+  const maxPackets = packets.length;
 
   useEffect(() => {
     console.log('EnhancedPacketList received packets:', {
@@ -67,6 +70,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       let destination = packet.destination || 'Unknown'; 
       let protocol = packet.protocol || 'Unknown';
       let info = packet.info || 'Unknown Packet';
+      let length = packet.length || 0;
       
       // Try to extract from _source.layers if available (Wireshark JSON format)
       if (packet._source?.layers) {
@@ -83,11 +87,31 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
           source = source + ':' + (layers.tcp['tcp.srcport'] || '');
           destination = destination + ':' + (layers.tcp['tcp.dstport'] || '');
           protocol = 'TCP';
-          info = `${layers.tcp['tcp.flags_tree']?.['tcp.flags.syn'] === '1' ? 'SYN ' : ''}${layers.tcp['tcp.flags_tree']?.['tcp.flags.ack'] === '1' ? 'ACK ' : ''}${layers.tcp['tcp.flags_tree']?.['tcp.flags.fin'] === '1' ? 'FIN ' : ''}[${layers.tcp['tcp.seq'] || ''}]`;
+          
+          // Detailed TCP flags handling
+          const flags = [];
+          if (layers.tcp['tcp.flags_tree']) {
+            if (layers.tcp['tcp.flags_tree']['tcp.flags.syn'] === '1') flags.push('SYN');
+            if (layers.tcp['tcp.flags_tree']['tcp.flags.ack'] === '1') flags.push('ACK');
+            if (layers.tcp['tcp.flags_tree']['tcp.flags.fin'] === '1') flags.push('FIN');
+            if (layers.tcp['tcp.flags_tree']['tcp.flags.psh'] === '1') flags.push('PSH');
+            if (layers.tcp['tcp.flags_tree']['tcp.flags.rst'] === '1') flags.push('RST');
+            if (layers.tcp['tcp.flags_tree']['tcp.flags.urg'] === '1') flags.push('URG');
+          }
+          
+          // Construct meaningful TCP info
+          const seqNum = layers.tcp['tcp.seq'] || '';
+          const ackNum = layers.tcp['tcp.ack'] || '';
+          const winSize = layers.tcp['tcp.window_size'] || '';
+          const len = layers.tcp['tcp.len'] || '';
+          
+          info = `${flags.join(' ')} Seq=${seqNum} Ack=${ackNum} Win=${winSize} Len=${len}`;
+          length = parseInt(layers.tcp['tcp.len'] || length);
         } else if (layers.udp) {
           source = source + ':' + (layers.udp['udp.srcport'] || '');
           destination = destination + ':' + (layers.udp['udp.dstport'] || '');
           protocol = 'UDP';
+          length = parseInt(layers.udp['udp.length'] || length);
         }
         
         // Get highest layer protocol
@@ -101,12 +125,31 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
         } else if (layers.dns) {
           protocol = 'DNS';
           info = layers.dns['dns.qry.name'] ? `Query: ${layers.dns['dns.qry.name']}` : 'DNS Packet';
+        } else if (layers.ssh) {
+          protocol = 'SSH';
+          info = 'SSH ' + (layers.ssh['ssh.protocol'] || '');
+        } else if (layers.arp) {
+          protocol = 'ARP';
+          info = layers.arp['arp.opcode'] === '1' ? 'Who has ' + (layers.arp['arp.dst.proto_ipv4'] || '?') : 'ARP Reply';
+        } else if (layers.tls) {
+          protocol = 'TLS';
+          if (layers.tls['tls.record.version']) {
+            if (layers.tls['tls.record.version'] === '0x0303') protocol = 'TLSv1.2';
+            else if (layers.tls['tls.record.version'] === '0x0304') protocol = 'TLSv1.3';
+            else if (layers.tls['tls.record.version'] === '0x0301') protocol = 'TLSv1';
+          }
+          info = 'Application Data';
         }
         
         // Use frame protocol if we still don't have a good protocol
         if (protocol === 'Unknown' && layers.frame?.['frame.protocols']) {
           const protocols = layers.frame['frame.protocols'].split(':');
           protocol = protocols[protocols.length - 1].toUpperCase();
+        }
+        
+        // Get packet length from frame if available
+        if (layers.frame && layers.frame['frame.len']) {
+          length = parseInt(layers.frame['frame.len']);
         }
       }
       
@@ -119,7 +162,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
         source: source,
         destination: destination,
         protocol: protocol,
-        length: packet.length || packet.len || packet._source?.layers?.frame?.['frame.len'] || 0,
+        length: length,
         info: info
       };
     });
@@ -195,6 +238,12 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
     });
   }, [safePackets, filter, filterOptions]);
 
+  // Get paginated packets to display
+  const displayedPackets = useMemo(() => {
+    const start = page * pageSize;
+    return filteredPackets.slice(start, start + pageSize);
+  }, [filteredPackets, page, pageSize]);
+
   const handlePacketClick = (packet: any) => {
     setSelectedPacket(packet);
     console.log('Selected packet details:', packet);
@@ -236,7 +285,9 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
     <div className="cyber-box">
       <div className="flex flex-col mb-4">
         <div className="flex justify-between items-center mb-2">
-          <h3 className="text-sm font-medium cyber-text">Packet Capture</h3>
+          <h3 className="text-sm font-medium cyber-text">
+            Packet Capture ({maxPackets} total packets)
+          </h3>
           <Button 
             variant="outline" 
             size="sm" 
@@ -323,20 +374,20 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
                     No packet data available
                   </TableCell>
                 </TableRow>
-              ) : filteredPackets.length === 0 ? (
+              ) : displayedPackets.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-4 text-cyber-foreground/50">
                     No packets match the current filters
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredPackets.map((packet, idx) => (
+                displayedPackets.map((packet, idx) => (
                   <TableRow 
                     key={`packet-${idx}-${packet.number || idx}`} 
                     className="border-cyber-border hover:bg-cyber-muted hover:bg-opacity-30 cursor-pointer"
                     onClick={() => handlePacketClick(packet)}
                   >
-                    <TableCell className="font-mono">{packet.number || idx + 1}</TableCell>
+                    <TableCell className="font-mono">{packet.number || (page * pageSize) + idx + 1}</TableCell>
                     <TableCell className="font-mono">{typeof packet.relativeTime === 'string' ? packet.relativeTime : packet.time}</TableCell>
                     <TableCell className="font-mono">{packet.source || 'Unknown'}</TableCell>
                     <TableCell className="font-mono">{packet.destination || 'Unknown'}</TableCell>
@@ -353,6 +404,52 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
             </TableBody>
           </Table>
         </ScrollArea>
+      </div>
+      
+      {/* Pagination controls */}
+      <div className="flex justify-between items-center mt-4">
+        <div className="text-sm text-cyber-foreground/70">
+          Showing {page * pageSize + 1} - {Math.min((page + 1) * pageSize, filteredPackets.length)} of {filteredPackets.length} packets
+          {filteredPackets.length !== maxPackets && <span> (filtered from {maxPackets})</span>}
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPage(0)} 
+            disabled={page === 0}
+            className="text-xs"
+          >
+            First
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPage(p => Math.max(0, p - 1))} 
+            disabled={page === 0}
+            className="text-xs"
+          >
+            Previous
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPage(p => Math.min(Math.ceil(filteredPackets.length / pageSize) - 1, p + 1))} 
+            disabled={page >= Math.ceil(filteredPackets.length / pageSize) - 1}
+            className="text-xs"
+          >
+            Next
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setPage(Math.ceil(filteredPackets.length / pageSize) - 1)} 
+            disabled={page >= Math.ceil(filteredPackets.length / pageSize) - 1}
+            className="text-xs"
+          >
+            Last
+          </Button>
+        </div>
       </div>
       
       {selectedPacket && (
