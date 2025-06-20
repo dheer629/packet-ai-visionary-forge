@@ -1,4 +1,3 @@
-
 import { 
   decodeTCPLayer, 
   decodeUDPLayer, 
@@ -49,8 +48,10 @@ export const enhancePacketData = (analysisData: any, file: File): ProcessedData 
         relativeTime: packet.relativeTime || packet.time || (index * 0.001).toFixed(6),
       };
       
-      // Comprehensive protocol decoding
-      if (packet._source?.layers) {
+      // Enhanced protocol decoding from raw packet data
+      if (packet.rawData || packet.data) {
+        enhancedPacket = decodeRawPacketData(enhancedPacket, packet);
+      } else if (packet._source?.layers) {
         enhancedPacket = decodeWiresharkLayers(enhancedPacket, packet._source.layers);
       } else {
         enhancedPacket = decodeBasicPacketFields(enhancedPacket, packet);
@@ -81,6 +82,273 @@ export const enhancePacketData = (analysisData: any, file: File): ProcessedData 
   });
   
   return analysisData;
+};
+
+// New function to decode raw packet data from PCAP
+const decodeRawPacketData = (enhancedPacket: any, packet: any) => {
+  const rawData = packet.rawData || packet.data;
+  if (!rawData || !Array.isArray(rawData)) {
+    console.warn('No valid raw data found for packet', packet.number);
+    return decodeBasicPacketFields(enhancedPacket, packet);
+  }
+  
+  console.log(`Decoding raw packet ${packet.number}, data length: ${rawData.length}`);
+  
+  let offset = 0;
+  
+  // Skip link layer header (varies by link type)
+  // For Ethernet (most common), it's 14 bytes
+  // For Linux SLL (link type 113), it's 16 bytes
+  const linkType = packet.linkType || 1; // Default to Ethernet
+  
+  if (linkType === 113) {
+    // Linux SLL header - 16 bytes
+    offset = 16;
+  } else {
+    // Ethernet header - 14 bytes
+    if (rawData.length >= 14) {
+      const destMac = rawData.slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join(':');
+      const srcMac = rawData.slice(6, 12).map(b => b.toString(16).padStart(2, '0')).join(':');
+      const etherType = (rawData[12] << 8) | rawData[13];
+      
+      enhancedPacket.ethernet = {
+        destMac,
+        srcMac,
+        type: `0x${etherType.toString(16).padStart(4, '0')}`
+      };
+      
+      offset = 14;
+    }
+  }
+  
+  // Check if we have enough data for IP header
+  if (rawData.length <= offset + 20) {
+    console.warn(`Packet ${packet.number} too short for IP header`);
+    return decodeBasicPacketFields(enhancedPacket, packet);
+  }
+  
+  // Parse IP header
+  const ipVersion = (rawData[offset] >> 4) & 0x0F;
+  
+  if (ipVersion === 4) {
+    enhancedPacket = decodeIPv4Header(enhancedPacket, rawData, offset);
+  } else if (ipVersion === 6) {
+    enhancedPacket = decodeIPv6Header(enhancedPacket, rawData, offset);
+  } else {
+    console.warn(`Unknown IP version ${ipVersion} in packet ${packet.number}`);
+    return decodeBasicPacketFields(enhancedPacket, packet);
+  }
+  
+  return enhancedPacket;
+};
+
+// Decode IPv4 header
+const decodeIPv4Header = (enhancedPacket: any, rawData: number[], offset: number) => {
+  const headerLength = (rawData[offset] & 0x0F) * 4;
+  const protocol = rawData[offset + 9];
+  const sourceIP = rawData.slice(offset + 12, offset + 16).join('.');
+  const destIP = rawData.slice(offset + 16, offset + 20).join('.');
+  
+  enhancedPacket.source = sourceIP;
+  enhancedPacket.destination = destIP;
+  enhancedPacket.ip = {
+    version: '4',
+    headerLength: headerLength.toString(),
+    ttl: rawData[offset + 8].toString(),
+    protocol: protocol.toString(),
+    source: sourceIP,
+    destination: destIP
+  };
+  
+  // Parse transport layer
+  const transportOffset = offset + headerLength;
+  
+  switch (protocol) {
+    case 6: // TCP
+      enhancedPacket = decodeTCPFromRaw(enhancedPacket, rawData, transportOffset);
+      break;
+    case 17: // UDP
+      enhancedPacket = decodeUDPFromRaw(enhancedPacket, rawData, transportOffset);
+      break;
+    case 1: // ICMP
+      enhancedPacket = decodeICMPFromRaw(enhancedPacket, rawData, transportOffset);
+      break;
+    default:
+      enhancedPacket.protocol = `IP Protocol ${protocol}`;
+      enhancedPacket.info = `IP packet with protocol ${protocol}`;
+  }
+  
+  return enhancedPacket;
+};
+
+// Decode IPv6 header
+const decodeIPv6Header = (enhancedPacket: any, rawData: number[], offset: number) => {
+  const nextHeader = rawData[offset + 6];
+  
+  // IPv6 addresses are 16 bytes each
+  const sourceIP = [];
+  const destIP = [];
+  
+  for (let i = 0; i < 16; i += 2) {
+    sourceIP.push(((rawData[offset + 8 + i] << 8) | rawData[offset + 8 + i + 1]).toString(16));
+    destIP.push(((rawData[offset + 24 + i] << 8) | rawData[offset + 24 + i + 1]).toString(16));
+  }
+  
+  const sourceIPStr = sourceIP.join(':');
+  const destIPStr = destIP.join(':');
+  
+  enhancedPacket.source = sourceIPStr;
+  enhancedPacket.destination = destIPStr;
+  enhancedPacket.protocol = 'IPv6';
+  enhancedPacket.ipv6 = {
+    version: '6',
+    nextHeader: nextHeader.toString(),
+    source: sourceIPStr,
+    destination: destIPStr
+  };
+  
+  // Parse next header (transport layer)
+  const transportOffset = offset + 40; // IPv6 header is fixed 40 bytes
+  
+  switch (nextHeader) {
+    case 6: // TCP
+      enhancedPacket = decodeTCPFromRaw(enhancedPacket, rawData, transportOffset);
+      break;
+    case 17: // UDP
+      enhancedPacket = decodeUDPFromRaw(enhancedPacket, rawData, transportOffset);
+      break;
+    case 58: // ICMPv6
+      enhancedPacket = decodeICMPv6FromRaw(enhancedPacket, rawData, transportOffset);
+      break;
+    default:
+      enhancedPacket.info = `IPv6 packet with next header ${nextHeader}`;
+  }
+  
+  return enhancedPacket;
+};
+
+// Decode TCP from raw data
+const decodeTCPFromRaw = (enhancedPacket: any, rawData: number[], offset: number) => {
+  if (rawData.length < offset + 20) return enhancedPacket;
+  
+  const srcPort = (rawData[offset] << 8) | rawData[offset + 1];
+  const dstPort = (rawData[offset + 2] << 8) | rawData[offset + 3];
+  const seqNum = (rawData[offset + 4] << 24) | (rawData[offset + 5] << 16) | (rawData[offset + 6] << 8) | rawData[offset + 7];
+  const ackNum = (rawData[offset + 8] << 24) | (rawData[offset + 9] << 16) | (rawData[offset + 10] << 8) | rawData[offset + 11];
+  const flags = rawData[offset + 13];
+  const windowSize = (rawData[offset + 14] << 8) | rawData[offset + 15];
+  
+  enhancedPacket.source = `${enhancedPacket.source}:${srcPort}`;
+  enhancedPacket.destination = `${enhancedPacket.destination}:${dstPort}`;
+  enhancedPacket.protocol = 'TCP';
+  
+  const flagNames = [];
+  if (flags & 0x02) flagNames.push('SYN');
+  if (flags & 0x10) flagNames.push('ACK');
+  if (flags & 0x08) flagNames.push('PSH');
+  if (flags & 0x01) flagNames.push('FIN');
+  if (flags & 0x04) flagNames.push('RST');
+  if (flags & 0x20) flagNames.push('URG');
+  
+  enhancedPacket.tcp = {
+    srcPort: srcPort.toString(),
+    dstPort: dstPort.toString(),
+    seq: seqNum.toString(),
+    ack: ackNum.toString(),
+    flags: flagNames.join(' '),
+    window: windowSize.toString()
+  };
+  
+  enhancedPacket.info = `${flagNames.join(' ')} Seq=${seqNum} Ack=${ackNum} Win=${windowSize}`;
+  
+  return enhancedPacket;
+};
+
+// Decode UDP from raw data
+const decodeUDPFromRaw = (enhancedPacket: any, rawData: number[], offset: number) => {
+  if (rawData.length < offset + 8) return enhancedPacket;
+  
+  const srcPort = (rawData[offset] << 8) | rawData[offset + 1];
+  const dstPort = (rawData[offset + 2] << 8) | rawData[offset + 3];
+  const length = (rawData[offset + 4] << 8) | rawData[offset + 5];
+  
+  enhancedPacket.source = `${enhancedPacket.source}:${srcPort}`;
+  enhancedPacket.destination = `${enhancedPacket.destination}:${dstPort}`;
+  enhancedPacket.protocol = 'UDP';
+  enhancedPacket.length = length;
+  
+  enhancedPacket.udp = {
+    srcPort: srcPort.toString(),
+    dstPort: dstPort.toString(),
+    length: length.toString()
+  };
+  
+  enhancedPacket.info = `UDP Src Port: ${srcPort}, Dst Port: ${dstPort}, Length: ${length}`;
+  
+  return enhancedPacket;
+};
+
+// Decode ICMP from raw data
+const decodeICMPFromRaw = (enhancedPacket: any, rawData: number[], offset: number) => {
+  if (rawData.length < offset + 4) return enhancedPacket;
+  
+  const type = rawData[offset];
+  const code = rawData[offset + 1];
+  
+  enhancedPacket.protocol = 'ICMP';
+  enhancedPacket.icmp = {
+    type: type.toString(),
+    code: code.toString(),
+    typeName: getICMPTypeName(type.toString(), code.toString())
+  };
+  
+  enhancedPacket.info = enhancedPacket.icmp.typeName;
+  
+  return enhancedPacket;
+};
+
+// Decode ICMPv6 from raw data
+const decodeICMPv6FromRaw = (enhancedPacket: any, rawData: number[], offset: number) => {
+  if (rawData.length < offset + 4) return enhancedPacket;
+  
+  const type = rawData[offset];
+  const code = rawData[offset + 1];
+  
+  enhancedPacket.protocol = 'ICMPv6';
+  enhancedPacket.icmpv6 = {
+    type: type.toString(),
+    code: code.toString(),
+    typeName: getICMPv6TypeName(type.toString(), code.toString())
+  };
+  
+  enhancedPacket.info = enhancedPacket.icmpv6.typeName;
+  
+  return enhancedPacket;
+};
+
+// Helper functions for protocol type names
+const getICMPTypeName = (type: string, code: string) => {
+  const typeNum = parseInt(type);
+  switch (typeNum) {
+    case 0: return 'Echo Reply';
+    case 3: return 'Destination Unreachable';
+    case 8: return 'Echo Request';
+    case 11: return 'Time Exceeded';
+    default: return `ICMP Type ${type}`;
+  }
+};
+
+const getICMPv6TypeName = (type: string, code: string) => {
+  const typeNum = parseInt(type);
+  switch (typeNum) {
+    case 128: return 'Echo Request';
+    case 129: return 'Echo Reply';
+    case 133: return 'Router Solicitation';
+    case 134: return 'Router Advertisement';
+    case 135: return 'Neighbor Solicitation';
+    case 136: return 'Neighbor Advertisement';
+    default: return `ICMPv6 Type ${type}`;
+  }
 };
 
 // Comprehensive Wireshark layer decoder
