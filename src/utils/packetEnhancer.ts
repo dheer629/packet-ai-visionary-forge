@@ -84,7 +84,7 @@ export const enhancePacketData = (analysisData: any, file: File): ProcessedData 
   return analysisData;
 };
 
-// New function to decode raw packet data from PCAP
+// Improved function to decode raw packet data from PCAP
 const decodeRawPacketData = (enhancedPacket: any, packet: any) => {
   const rawData = packet.rawData || packet.data;
   if (!rawData || !Array.isArray(rawData)) {
@@ -92,21 +92,55 @@ const decodeRawPacketData = (enhancedPacket: any, packet: any) => {
     return decodeBasicPacketFields(enhancedPacket, packet);
   }
   
-  console.log(`Decoding raw packet ${packet.number}, data length: ${rawData.length}`);
+  console.log(`Decoding packet ${packet.number}, data length: ${rawData.length}, link type: ${packet.linkType || 'unknown'}`);
   
   let offset = 0;
+  const linkType = packet.linkType || 1;
   
-  // Skip link layer header (varies by link type)
-  // For Ethernet (most common), it's 14 bytes
-  // For Linux SLL (link type 113), it's 16 bytes
-  const linkType = packet.linkType || 1; // Default to Ethernet
-  
-  if (linkType === 113) {
-    // Linux SLL header - 16 bytes
-    offset = 16;
-  } else {
-    // Ethernet header - 14 bytes
-    if (rawData.length >= 14) {
+  try {
+    if (linkType === 113) {
+      // Linux SLL (Linux cooked capture) header - 16 bytes
+      if (rawData.length < 16) {
+        console.warn(`Packet ${packet.number} too short for Linux SLL header`);
+        return decodeBasicPacketFields(enhancedPacket, packet);
+      }
+      
+      // Parse Linux SLL header
+      const packetType = (rawData[0] << 8) | rawData[1];
+      const addressType = (rawData[2] << 8) | rawData[3];
+      const addressLength = (rawData[4] << 8) | rawData[5];
+      const protocolType = (rawData[14] << 8) | rawData[15];
+      
+      console.log(`Linux SLL: packet_type=${packetType}, addr_type=${addressType}, protocol=0x${protocolType.toString(16)}`);
+      
+      enhancedPacket.ethernet = {
+        type: `0x${protocolType.toString(16).padStart(4, '0')}`
+      };
+      
+      offset = 16;
+      
+      // Check protocol type to determine next layer
+      if (protocolType === 0x0800) {
+        // IPv4
+        enhancedPacket = decodeIPv4Header(enhancedPacket, rawData, offset);
+      } else if (protocolType === 0x86DD) {
+        // IPv6
+        enhancedPacket = decodeIPv6Header(enhancedPacket, rawData, offset);
+      } else if (protocolType === 0x0806) {
+        // ARP
+        enhancedPacket = decodeARPFromRaw(enhancedPacket, rawData, offset);
+      } else {
+        enhancedPacket.protocol = `Unknown Protocol 0x${protocolType.toString(16)}`;
+        enhancedPacket.info = `Unknown protocol type: 0x${protocolType.toString(16)}`;
+      }
+      
+    } else {
+      // Standard Ethernet header - 14 bytes
+      if (rawData.length < 14) {
+        console.warn(`Packet ${packet.number} too short for Ethernet header`);
+        return decodeBasicPacketFields(enhancedPacket, packet);
+      }
+      
       const destMac = rawData.slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join(':');
       const srcMac = rawData.slice(6, 12).map(b => b.toString(16).padStart(2, '0')).join(':');
       const etherType = (rawData[12] << 8) | rawData[13];
@@ -118,64 +152,77 @@ const decodeRawPacketData = (enhancedPacket: any, packet: any) => {
       };
       
       offset = 14;
+      
+      if (etherType === 0x0800) {
+        enhancedPacket = decodeIPv4Header(enhancedPacket, rawData, offset);
+      } else if (etherType === 0x86DD) {
+        enhancedPacket = decodeIPv6Header(enhancedPacket, rawData, offset);
+      } else if (etherType === 0x0806) {
+        enhancedPacket = decodeARPFromRaw(enhancedPacket, rawData, offset);
+      } else {
+        enhancedPacket.protocol = `Unknown EtherType 0x${etherType.toString(16)}`;
+        enhancedPacket.info = `Unknown EtherType: 0x${etherType.toString(16)}`;
+      }
     }
-  }
-  
-  // Check if we have enough data for IP header
-  if (rawData.length <= offset + 20) {
-    console.warn(`Packet ${packet.number} too short for IP header`);
-    return decodeBasicPacketFields(enhancedPacket, packet);
-  }
-  
-  // Parse IP header
-  const ipVersion = (rawData[offset] >> 4) & 0x0F;
-  
-  if (ipVersion === 4) {
-    enhancedPacket = decodeIPv4Header(enhancedPacket, rawData, offset);
-  } else if (ipVersion === 6) {
-    enhancedPacket = decodeIPv6Header(enhancedPacket, rawData, offset);
-  } else {
-    console.warn(`Unknown IP version ${ipVersion} in packet ${packet.number}`);
-    return decodeBasicPacketFields(enhancedPacket, packet);
+    
+  } catch (error) {
+    console.error(`Error decoding packet ${packet.number}:`, error);
+    enhancedPacket.protocol = 'Decode Error';
+    enhancedPacket.info = 'Failed to decode packet';
   }
   
   return enhancedPacket;
 };
 
-// Decode IPv4 header
+// Improved IPv4 header decoder
 const decodeIPv4Header = (enhancedPacket: any, rawData: number[], offset: number) => {
-  const headerLength = (rawData[offset] & 0x0F) * 4;
-  const protocol = rawData[offset + 9];
-  const sourceIP = rawData.slice(offset + 12, offset + 16).join('.');
-  const destIP = rawData.slice(offset + 16, offset + 20).join('.');
+  if (rawData.length < offset + 20) {
+    console.warn('Insufficient data for IPv4 header');
+    return enhancedPacket;
+  }
   
-  enhancedPacket.source = sourceIP;
-  enhancedPacket.destination = destIP;
-  enhancedPacket.ip = {
-    version: '4',
-    headerLength: headerLength.toString(),
-    ttl: rawData[offset + 8].toString(),
-    protocol: protocol.toString(),
-    source: sourceIP,
-    destination: destIP
-  };
-  
-  // Parse transport layer
-  const transportOffset = offset + headerLength;
-  
-  switch (protocol) {
-    case 6: // TCP
-      enhancedPacket = decodeTCPFromRaw(enhancedPacket, rawData, transportOffset);
-      break;
-    case 17: // UDP
-      enhancedPacket = decodeUDPFromRaw(enhancedPacket, rawData, transportOffset);
-      break;
-    case 1: // ICMP
-      enhancedPacket = decodeICMPFromRaw(enhancedPacket, rawData, transportOffset);
-      break;
-    default:
-      enhancedPacket.protocol = `IP Protocol ${protocol}`;
-      enhancedPacket.info = `IP packet with protocol ${protocol}`;
+  try {
+    const version = (rawData[offset] >> 4) & 0x0F;
+    const headerLength = (rawData[offset] & 0x0F) * 4;
+    const protocol = rawData[offset + 9];
+    const sourceIP = rawData.slice(offset + 12, offset + 16).join('.');
+    const destIP = rawData.slice(offset + 16, offset + 20).join('.');
+    
+    console.log(`IPv4: version=${version}, protocol=${protocol}, src=${sourceIP}, dst=${destIP}`);
+    
+    enhancedPacket.source = sourceIP;
+    enhancedPacket.destination = destIP;
+    enhancedPacket.ip = {
+      version: version.toString(),
+      headerLength: headerLength.toString(),
+      ttl: rawData[offset + 8].toString(),
+      protocol: protocol.toString(),
+      source: sourceIP,
+      destination: destIP
+    };
+    
+    // Parse transport layer
+    const transportOffset = offset + headerLength;
+    
+    switch (protocol) {
+      case 6: // TCP
+        enhancedPacket = decodeTCPFromRaw(enhancedPacket, rawData, transportOffset);
+        break;
+      case 17: // UDP
+        enhancedPacket = decodeUDPFromRaw(enhancedPacket, rawData, transportOffset);
+        break;
+      case 1: // ICMP
+        enhancedPacket = decodeICMPFromRaw(enhancedPacket, rawData, transportOffset);
+        break;
+      default:
+        enhancedPacket.protocol = `IP Protocol ${protocol}`;
+        enhancedPacket.info = `IP packet with protocol ${protocol}`;
+    }
+    
+  } catch (error) {
+    console.error('Error decoding IPv4 header:', error);
+    enhancedPacket.protocol = 'IPv4 Decode Error';
+    enhancedPacket.info = 'Failed to decode IPv4 header';
   }
   
   return enhancedPacket;
@@ -349,6 +396,44 @@ const getICMPv6TypeName = (type: string, code: string) => {
     case 136: return 'Neighbor Advertisement';
     default: return `ICMPv6 Type ${type}`;
   }
+};
+
+// Add ARP decoder for raw data
+const decodeARPFromRaw = (enhancedPacket: any, rawData: number[], offset: number) => {
+  if (rawData.length < offset + 28) return enhancedPacket;
+  
+  try {
+    const opcode = (rawData[offset + 6] << 8) | rawData[offset + 7];
+    const senderMac = rawData.slice(offset + 8, offset + 14).map(b => b.toString(16).padStart(2, '0')).join(':');
+    const senderIP = rawData.slice(offset + 14, offset + 18).join('.');
+    const targetMac = rawData.slice(offset + 18, offset + 24).map(b => b.toString(16).padStart(2, '0')).join(':');
+    const targetIP = rawData.slice(offset + 24, offset + 28).join('.');
+    
+    enhancedPacket.protocol = 'ARP';
+    enhancedPacket.source = senderIP;
+    enhancedPacket.destination = targetIP;
+    
+    enhancedPacket.arp = {
+      operation: opcode === 1 ? 'Request' : 'Reply',
+      senderMac,
+      senderIP,
+      targetMac,
+      targetIP
+    };
+    
+    if (opcode === 1) {
+      enhancedPacket.info = `Who has ${targetIP}? Tell ${senderIP}`;
+    } else {
+      enhancedPacket.info = `${senderIP} is at ${senderMac}`;
+    }
+    
+  } catch (error) {
+    console.error('Error decoding ARP:', error);
+    enhancedPacket.protocol = 'ARP';
+    enhancedPacket.info = 'ARP packet';
+  }
+  
+  return enhancedPacket;
 };
 
 // Comprehensive Wireshark layer decoder
