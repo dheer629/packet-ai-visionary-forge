@@ -45,7 +45,6 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     try {
       console.log(`Processing file: ${file.name}, size: ${file.size} bytes`);
       
-      // Start processing the file with progress tracking
       const progressCallback = (progress: number) => {
         setProcessingProgress(Math.round(progress * 100));
       };
@@ -63,19 +62,14 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       );
       console.log('Total packet count:', analysisData?.packets?.length || 0);
       
-      // Ensure we have a properly structured data object
       if (!analysisData) {
         console.warn('No analysis data returned from processor');
         analysisData = { packets: [], summary: {} };
       }
       
-      // Process and enhance the packet data
       const enhancedData = enhancePacketData(analysisData, file);
-      
-      // Apply AI enhancement if available
       const aiEnhancedData = await applyAIEnhancement(enhancedData);
 
-      // Send the enhanced data to the parent component
       onFileUpload(aiEnhancedData);
       
       toast({
@@ -90,7 +84,6 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
         variant: "destructive"
       });
       
-      // Create empty data structure so UI doesn't break
       const fallbackData = createFallbackData(file);
       onFileUpload(fallbackData);
     } finally {
@@ -98,27 +91,17 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     }
   };
 
-  // Helper function to enhance packet data
+  // Enhanced packet data processing with comprehensive protocol support
   const enhancePacketData = (analysisData: any, file: File): ProcessedData => {
     if (analysisData.packets) {
-      console.log(`Processing ${analysisData.packets.length} packets for proper display`);
+      console.log(`Processing ${analysisData.packets.length} packets with comprehensive protocol decoding`);
       
-      // Simply normalize the packets but keep all original fields
       analysisData.packets = analysisData.packets.map((packet: any, index: number) => {
         if (!packet) {
           console.warn(`Packet at index ${index} is undefined or null`);
-          return {
-            number: index + 1,
-            time: (index * 0.001).toFixed(6),
-            source: 'Unknown',
-            destination: 'Unknown',
-            protocol: 'Unknown',
-            length: 0,
-            info: 'Missing Packet Data'
-          };
+          return createDefaultPacket(index);
         }
         
-        // Enhanced packet data extraction
         let enhancedPacket = {
           ...packet,
           number: packet.number || index + 1,
@@ -126,129 +109,11 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
           relativeTime: packet.relativeTime || packet.time || (index * 0.001).toFixed(6),
         };
         
-        // Process Wireshark JSON format if available
+        // Comprehensive protocol decoding
         if (packet._source?.layers) {
-          const layers = packet._source.layers;
-          
-          // Extract source and destination
-          if (layers.ip) {
-            enhancedPacket.source = layers.ip['ip.src'] || packet.source || 'Unknown';
-            enhancedPacket.destination = layers.ip['ip.dst'] || packet.destination || 'Unknown';
-          } else {
-            enhancedPacket.source = packet.source || packet.srcIP || packet.src || 'Unknown';
-            enhancedPacket.destination = packet.destination || packet.dstIP || packet.dst || 'Unknown';
-          }
-          
-          // Extract protocol information
-          if (layers.tcp) {
-            enhancedPacket.protocol = 'TCP';
-            
-            // Add port information
-            if (layers.tcp['tcp.srcport']) {
-              enhancedPacket.source = `${enhancedPacket.source}:${layers.tcp['tcp.srcport']}`;
-            }
-            
-            if (layers.tcp['tcp.dstport']) {
-              enhancedPacket.destination = `${enhancedPacket.destination}:${layers.tcp['tcp.dstport']}`;
-            }
-            
-            // Extract flags
-            const flags = [];
-            if (layers.tcp['tcp.flags_tree']) {
-              if (layers.tcp['tcp.flags_tree']['tcp.flags.syn'] === '1') flags.push('SYN');
-              if (layers.tcp['tcp.flags_tree']['tcp.flags.ack'] === '1') flags.push('ACK');
-              if (layers.tcp['tcp.flags_tree']['tcp.flags.psh'] === '1') flags.push('PSH');
-              if (layers.tcp['tcp.flags_tree']['tcp.flags.fin'] === '1') flags.push('FIN');
-              if (layers.tcp['tcp.flags_tree']['tcp.flags.rst'] === '1') flags.push('RST');
-              if (layers.tcp['tcp.flags_tree']['tcp.flags.urg'] === '1') flags.push('URG');
-            }
-            
-            // Construct info field
-            const seqNum = layers.tcp['tcp.seq'] || '';
-            const ackNum = layers.tcp['tcp.ack'] || '';
-            const winSize = layers.tcp['tcp.window_size'] || '';
-            const len = layers.tcp['tcp.len'] || '';
-            
-            enhancedPacket.info = `${flags.join(' ')} Seq=${seqNum} Ack=${ackNum} Win=${winSize} Len=${len}`;
-            enhancedPacket.length = parseInt(layers.tcp['tcp.len'] || layers.frame?.['frame.len'] || '0');
-          }
-          else if (layers.udp) {
-            enhancedPacket.protocol = 'UDP';
-            
-            if (layers.udp['udp.srcport']) {
-              enhancedPacket.source = `${enhancedPacket.source}:${layers.udp['udp.srcport']}`;
-            }
-            
-            if (layers.udp['udp.dstport']) {
-              enhancedPacket.destination = `${enhancedPacket.destination}:${layers.udp['udp.dstport']}`;
-            }
-            
-            enhancedPacket.length = parseInt(layers.udp['udp.length'] || layers.frame?.['frame.len'] || '0');
-            enhancedPacket.info = `${enhancedPacket.source} → ${enhancedPacket.destination} Len=${enhancedPacket.length}`;
-          }
-          else if (layers.http) {
-            enhancedPacket.protocol = 'HTTP';
-            if (layers.http['http.request.method']) {
-              enhancedPacket.info = `${layers.http['http.request.method']} ${layers.http['http.request.uri'] || ''}`;
-            } else if (layers.http['http.response.code']) {
-              enhancedPacket.info = `HTTP ${layers.http['http.response.code']} ${layers.http['http.response.phrase'] || ''}`;
-            } else {
-              enhancedPacket.info = 'HTTP Packet';
-            }
-          }
-          else if (layers.dns) {
-            enhancedPacket.protocol = 'DNS';
-            if (layers.dns['dns.qry.name']) {
-              enhancedPacket.info = `Query: ${layers.dns['dns.qry.name']}`;
-            } else {
-              enhancedPacket.info = 'DNS Response';
-            }
-          }
-          else if (layers.arp) {
-            enhancedPacket.protocol = 'ARP';
-            if (layers.arp['arp.opcode'] === '1') {
-              enhancedPacket.info = `Who has ${layers.arp['arp.dst.proto_ipv4'] || '?'} Tell ${layers.arp['arp.src.proto_ipv4'] || '?'}`;
-            } else {
-              enhancedPacket.info = `${layers.arp['arp.src.hw_mac'] || '?'} is at ${layers.arp['arp.src.proto_ipv4'] || '?'}`;
-            }
-          }
-          else if (layers.tls) {
-            if (layers.tls['tls.record.version']) {
-              if (layers.tls['tls.record.version'] === '0x0303') enhancedPacket.protocol = 'TLSv1.2';
-              else if (layers.tls['tls.record.version'] === '0x0304') enhancedPacket.protocol = 'TLSv1.3';
-              else if (layers.tls['tls.record.version'] === '0x0301') enhancedPacket.protocol = 'TLSv1';
-            } else {
-              enhancedPacket.protocol = 'TLS';
-            }
-            enhancedPacket.info = 'Application Data';
-          }
-          else if (layers.ssh) {
-            enhancedPacket.protocol = 'SSH';
-            enhancedPacket.info = 'SSH Protocol';
-          }
-          
-          // Frame information for all packets
-          if (layers.frame) {
-            if (!enhancedPacket.protocol || enhancedPacket.protocol === 'Unknown') {
-              const protocols = layers.frame['frame.protocols']?.split(':') || [];
-              enhancedPacket.protocol = protocols[protocols.length - 1]?.toUpperCase() || 'Unknown';
-            }
-            
-            enhancedPacket.length = parseInt(layers.frame['frame.len'] || '0');
-            
-            // Make sure we have an info field
-            if (!enhancedPacket.info) {
-              enhancedPacket.info = layers.frame['frame.protocols'] || 
-                                     `${enhancedPacket.protocol} Packet`;
-            }
-          }
+          enhancedPacket = decodeWiresharkLayers(enhancedPacket, packet._source.layers);
         } else {
-          // Basic packet fields if no _source.layers
-          enhancedPacket.source = packet.source || packet.srcIP || packet.src || packet['ip.src'] || 'Unknown';
-          enhancedPacket.destination = packet.destination || packet.dstIP || packet.dst || packet['ip.dst'] || 'Unknown';
-          enhancedPacket.protocol = packet.protocol || packet.type || 'Unknown';
-          enhancedPacket.length = packet.length || packet.len || 0;
-          enhancedPacket.info = packet.info || packet.summary || `${enhancedPacket.protocol} Packet`;
+          enhancedPacket = decodeBasicPacketFields(enhancedPacket, packet);
         }
         
         return enhancedPacket;
@@ -257,23 +122,11 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       console.log('Enhanced packet data sample:', analysisData.packets.slice(0, 3));
     } else {
       console.warn('No packet data found in analysis result, creating default packets');
-      
-      // Create default packets if none exist
-      analysisData.packets = Array.from({ length: 10 }).map((_, idx) => ({
-        number: idx + 1,
-        time: (idx * 0.001).toFixed(6),
-        source: 'Unknown',
-        destination: 'Unknown',
-        protocol: 'Unknown',
-        length: idx % 2 === 0 ? 78 : 196,
-        info: 'Default Packet'
-      }));
+      analysisData.packets = Array.from({ length: 10 }).map((_, idx) => createDefaultPacket(idx));
     }
 
-    // Generate comprehensive packet summary data
     analysisData = generateSummaryData(analysisData);
     
-    // Add metadata if missing
     analysisData.filename = file.name;
     analysisData.size = file.size;
     analysisData.timestamp = Date.now();
@@ -290,6 +143,479 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     return analysisData;
   };
 
+  // Comprehensive Wireshark layer decoder
+  const decodeWiresharkLayers = (enhancedPacket: any, layers: any) => {
+    // Frame information (always available)
+    if (layers.frame) {
+      enhancedPacket.length = parseInt(layers.frame['frame.len'] || '0');
+      enhancedPacket.frameTime = layers.frame['frame.time_relative'] || layers.frame['frame.time'];
+    }
+
+    // Ethernet layer
+    if (layers.eth) {
+      enhancedPacket.ethernet = {
+        destMac: layers.eth['eth.dst'],
+        srcMac: layers.eth['eth.src'],
+        type: layers.eth['eth.type']
+      };
+    }
+
+    // IP layer (IPv4)
+    if (layers.ip) {
+      enhancedPacket.source = layers.ip['ip.src'];
+      enhancedPacket.destination = layers.ip['ip.dst'];
+      enhancedPacket.ip = {
+        version: layers.ip['ip.version'] || '4',
+        headerLength: layers.ip['ip.hdr_len'] || '20',
+        ttl: layers.ip['ip.ttl'],
+        protocol: layers.ip['ip.proto'],
+        source: layers.ip['ip.src'],
+        destination: layers.ip['ip.dst'],
+        flags: layers.ip['ip.flags'],
+        fragOffset: layers.ip['ip.frag_offset']
+      };
+    }
+
+    // IPv6 layer
+    if (layers.ipv6) {
+      enhancedPacket.source = layers.ipv6['ipv6.src'];
+      enhancedPacket.destination = layers.ipv6['ipv6.dst'];
+      enhancedPacket.protocol = 'IPv6';
+      enhancedPacket.ipv6 = {
+        version: '6',
+        flowLabel: layers.ipv6['ipv6.flow'],
+        hopLimit: layers.ipv6['ipv6.hlim'],
+        nextHeader: layers.ipv6['ipv6.nxt'],
+        source: layers.ipv6['ipv6.src'],
+        destination: layers.ipv6['ipv6.dst']
+      };
+    }
+
+    // TCP layer
+    if (layers.tcp) {
+      enhancedPacket = decodeTCPLayer(enhancedPacket, layers.tcp);
+    }
+    
+    // UDP layer
+    else if (layers.udp) {
+      enhancedPacket = decodeUDPLayer(enhancedPacket, layers.udp);
+    }
+    
+    // ICMP layer
+    else if (layers.icmp) {
+      enhancedPacket = decodeICMPLayer(enhancedPacket, layers.icmp);
+    }
+    
+    // ICMPv6 layer
+    else if (layers.icmpv6) {
+      enhancedPacket = decodeICMPv6Layer(enhancedPacket, layers.icmpv6);
+    }
+
+    // Application layer protocols
+    if (layers.http) {
+      enhancedPacket = decodeHTTPLayer(enhancedPacket, layers.http);
+    } else if (layers.https || layers.tls || layers.ssl) {
+      enhancedPacket = decodeTLSLayer(enhancedPacket, layers.tls || layers.ssl);
+    } else if (layers.dns) {
+      enhancedPacket = decodeDNSLayer(enhancedPacket, layers.dns);
+    } else if (layers.dhcp || layers.bootp) {
+      enhancedPacket = decodeDHCPLayer(enhancedPacket, layers.dhcp || layers.bootp);
+    } else if (layers.arp) {
+      enhancedPacket = decodeARPLayer(enhancedPacket, layers.arp);
+    } else if (layers.ssh) {
+      enhancedPacket = decodeSSHLayer(enhancedPacket, layers.ssh);
+    } else if (layers.ftp) {
+      enhancedPacket = decodeFTPLayer(enhancedPacket, layers.ftp);
+    } else if (layers.smtp) {
+      enhancedPacket = decodeSMTPLayer(enhancedPacket, layers.smtp);
+    } else if (layers.pop) {
+      enhancedPacket = decodePOPLayer(enhancedPacket, layers.pop);
+    } else if (layers.imap) {
+      enhancedPacket = decodeIMAPLayer(enhancedPacket, layers.imap);
+    } else if (layers.ntp) {
+      enhancedPacket = decodeNTPLayer(enhancedPacket, layers.ntp);
+    } else if (layers.snmp) {
+      enhancedPacket = decodeSNMPLayer(enhancedPacket, layers.snmp);
+    }
+
+    // Set default protocol if not determined
+    if (!enhancedPacket.protocol || enhancedPacket.protocol === 'Unknown') {
+      if (layers.frame?.['frame.protocols']) {
+        const protocols = layers.frame['frame.protocols'].split(':');
+        enhancedPacket.protocol = protocols[protocols.length - 1]?.toUpperCase() || 'Unknown';
+      }
+    }
+
+    // Set default info if not set
+    if (!enhancedPacket.info) {
+      enhancedPacket.info = `${enhancedPacket.protocol} Packet`;
+    }
+
+    return enhancedPacket;
+  };
+
+  // TCP decoder
+  const decodeTCPLayer = (packet: any, tcp: any) => {
+    const srcPort = tcp['tcp.srcport'];
+    const dstPort = tcp['tcp.dstport'];
+    
+    if (srcPort) packet.source = `${packet.source}:${srcPort}`;
+    if (dstPort) packet.destination = `${packet.destination}:${dstPort}`;
+    
+    packet.protocol = 'TCP';
+    
+    // Extract TCP flags
+    const flags = [];
+    if (tcp['tcp.flags_tree']) {
+      const flagsTree = tcp['tcp.flags_tree'];
+      if (flagsTree['tcp.flags.syn'] === '1') flags.push('SYN');
+      if (flagsTree['tcp.flags.ack'] === '1') flags.push('ACK');
+      if (flagsTree['tcp.flags.psh'] === '1') flags.push('PSH');
+      if (flagsTree['tcp.flags.fin'] === '1') flags.push('FIN');
+      if (flagsTree['tcp.flags.rst'] === '1') flags.push('RST');
+      if (flagsTree['tcp.flags.urg'] === '1') flags.push('URG');
+    }
+    
+    packet.tcp = {
+      srcPort,
+      dstPort,
+      seq: tcp['tcp.seq'],
+      ack: tcp['tcp.ack'],
+      flags: flags.join(' '),
+      window: tcp['tcp.window_size'],
+      length: tcp['tcp.len'] || '0'
+    };
+    
+    const seqNum = tcp['tcp.seq'] || '';
+    const ackNum = tcp['tcp.ack'] || '';
+    const winSize = tcp['tcp.window_size'] || '';
+    const len = tcp['tcp.len'] || '';
+    
+    packet.info = `${flags.join(' ')} Seq=${seqNum} Ack=${ackNum} Win=${winSize} Len=${len}`;
+    packet.length = parseInt(len || packet.length || '0');
+    
+    return packet;
+  };
+
+  // UDP decoder
+  const decodeUDPLayer = (packet: any, udp: any) => {
+    const srcPort = udp['udp.srcport'];
+    const dstPort = udp['udp.dstport'];
+    const length = udp['udp.length'];
+    
+    if (srcPort) packet.source = `${packet.source}:${srcPort}`;
+    if (dstPort) packet.destination = `${packet.destination}:${dstPort}`;
+    
+    packet.protocol = 'UDP';
+    packet.length = parseInt(length || '0');
+    
+    packet.udp = {
+      srcPort,
+      dstPort,
+      length
+    };
+    
+    packet.info = `Src Port: ${srcPort}, Dst Port: ${dstPort}, Length: ${length}`;
+    
+    return packet;
+  };
+
+  // ICMP decoder
+  const decodeICMPLayer = (packet: any, icmp: any) => {
+    packet.protocol = 'ICMP';
+    
+    const type = icmp['icmp.type'];
+    const code = icmp['icmp.code'];
+    
+    packet.icmp = {
+      type,
+      code,
+      typeName: getICMPTypeName(type, code)
+    };
+    
+    packet.info = packet.icmp.typeName;
+    
+    return packet;
+  };
+
+  // ICMPv6 decoder
+  const decodeICMPv6Layer = (packet: any, icmpv6: any) => {
+    packet.protocol = 'ICMPv6';
+    
+    const type = icmpv6['icmpv6.type'];
+    const code = icmpv6['icmpv6.code'];
+    
+    packet.icmpv6 = {
+      type,
+      code,
+      typeName: getICMPv6TypeName(type, code)
+    };
+    
+    packet.info = packet.icmpv6.typeName;
+    
+    return packet;
+  };
+
+  // DNS decoder
+  const decodeDNSLayer = (packet: any, dns: any) => {
+    packet.protocol = 'DNS';
+    
+    const queryName = dns['dns.qry.name'];
+    const responseCode = dns['dns.resp.code'];
+    const queryType = dns['dns.qry.type'];
+    
+    if (queryName) {
+      packet.info = `Query ${queryType || 'A'}: ${queryName}`;
+    } else if (responseCode !== undefined) {
+      packet.info = `Response: ${getDNSResponseCodeName(responseCode)}`;
+    } else {
+      packet.info = 'DNS Query/Response';
+    }
+    
+    return packet;
+  };
+
+  // HTTP decoder
+  const decodeHTTPLayer = (packet: any, http: any) => {
+    packet.protocol = 'HTTP';
+    
+    const method = http['http.request.method'];
+    const uri = http['http.request.uri'];
+    const responseCode = http['http.response.code'];
+    const responsePhrase = http['http.response.phrase'];
+    
+    if (method) {
+      packet.info = `${method} ${uri || '/'}`;
+    } else if (responseCode) {
+      packet.info = `HTTP ${responseCode} ${responsePhrase || ''}`;
+    } else {
+      packet.info = 'HTTP Request/Response';
+    }
+    
+    return packet;
+  };
+
+  // TLS/SSL decoder
+  const decodeTLSLayer = (packet: any, tls: any) => {
+    const version = tls['tls.record.version'];
+    
+    if (version === '0x0303') packet.protocol = 'TLSv1.2';
+    else if (version === '0x0304') packet.protocol = 'TLSv1.3';
+    else if (version === '0x0301') packet.protocol = 'TLSv1';
+    else packet.protocol = 'TLS';
+    
+    const contentType = tls['tls.record.content_type'];
+    
+    if (contentType === '22') packet.info = 'Handshake';
+    else if (contentType === '23') packet.info = 'Application Data';
+    else if (contentType === '21') packet.info = 'Alert';
+    else packet.info = 'TLS Record';
+    
+    return packet;
+  };
+
+  // DHCP decoder
+  const decodeDHCPLayer = (packet: any, dhcp: any) => {
+    packet.protocol = 'DHCP';
+    
+    const messageType = dhcp['dhcp.option.dhcp_message_type'];
+    const clientIP = dhcp['dhcp.ip.client'];
+    const serverIP = dhcp['dhcp.ip.server'];
+    
+    if (messageType) {
+      packet.info = getDHCPMessageTypeName(messageType);
+      if (clientIP) packet.info += ` Client: ${clientIP}`;
+      if (serverIP) packet.info += ` Server: ${serverIP}`;
+    } else {
+      packet.info = 'DHCP Message';
+    }
+    
+    return packet;
+  };
+
+  // ARP decoder
+  const decodeARPLayer = (packet: any, arp: any) => {
+    packet.protocol = 'ARP';
+    
+    const opcode = arp['arp.opcode'];
+    const senderIP = arp['arp.src.proto_ipv4'];
+    const targetIP = arp['arp.dst.proto_ipv4'];
+    const senderMac = arp['arp.src.hw_mac'];
+    
+    packet.arp = {
+      operation: opcode === '1' ? 'Request' : 'Reply',
+      senderMac,
+      senderIP,
+      targetMac: arp['arp.dst.hw_mac'],
+      targetIP
+    };
+    
+    if (opcode === '1') {
+      packet.info = `Who has ${targetIP}? Tell ${senderIP}`;
+    } else {
+      packet.info = `${senderIP} is at ${senderMac}`;
+    }
+    
+    return packet;
+  };
+
+  // SSH decoder
+  const decodeSSHLayer = (packet: any, ssh: any) => {
+    packet.protocol = 'SSH';
+    const version = ssh['ssh.protocol'] || ssh['ssh.version'];
+    packet.info = version ? `SSH ${version}` : 'SSH Protocol';
+    return packet;
+  };
+
+  // FTP decoder
+  const decodeFTPLayer = (packet: any, ftp: any) => {
+    packet.protocol = 'FTP';
+    const command = ftp['ftp.request.command'];
+    const response = ftp['ftp.response.code'];
+    
+    if (command) {
+      packet.info = `Command: ${command}`;
+    } else if (response) {
+      packet.info = `Response: ${response}`;
+    } else {
+      packet.info = 'FTP';
+    }
+    
+    return packet;
+  };
+
+  // SMTP decoder
+  const decodeSMTPLayer = (packet: any, smtp: any) => {
+    packet.protocol = 'SMTP';
+    const command = smtp['smtp.req.command'];
+    const response = smtp['smtp.response.code'];
+    
+    if (command) {
+      packet.info = `Command: ${command}`;
+    } else if (response) {
+      packet.info = `Response: ${response}`;
+    } else {
+      packet.info = 'SMTP';
+    }
+    
+    return packet;
+  };
+
+  // POP decoder
+  const decodePOPLayer = (packet: any, pop: any) => {
+    packet.protocol = 'POP3';
+    packet.info = 'POP3 Protocol';
+    return packet;
+  };
+
+  // IMAP decoder
+  const decodeIMAPLayer = (packet: any, imap: any) => {
+    packet.protocol = 'IMAP';
+    packet.info = 'IMAP Protocol';
+    return packet;
+  };
+
+  // NTP decoder
+  const decodeNTPLayer = (packet: any, ntp: any) => {
+    packet.protocol = 'NTP';
+    const mode = ntp['ntp.mode'];
+    packet.info = mode ? `NTP Mode ${mode}` : 'NTP';
+    return packet;
+  };
+
+  // SNMP decoder
+  const decodeSNMPLayer = (packet: any, snmp: any) => {
+    packet.protocol = 'SNMP';
+    const version = snmp['snmp.version'];
+    packet.info = version ? `SNMP v${version}` : 'SNMP';
+    return packet;
+  };
+
+  // Basic packet decoder for non-Wireshark format
+  const decodeBasicPacketFields = (enhancedPacket: any, packet: any) => {
+    enhancedPacket.source = packet.source || packet.srcIP || packet.src || packet['ip.src'] || 'Unknown';
+    enhancedPacket.destination = packet.destination || packet.dstIP || packet.dst || packet['ip.dst'] || 'Unknown';
+    enhancedPacket.protocol = packet.protocol || packet.type || 'Unknown';
+    enhancedPacket.length = packet.length || packet.len || 0;
+    enhancedPacket.info = packet.info || packet.summary || `${enhancedPacket.protocol} Packet`;
+    
+    return enhancedPacket;
+  };
+
+  // Helper functions for protocol type names
+  const getICMPTypeName = (type: string, code: string) => {
+    const typeNum = parseInt(type);
+    switch (typeNum) {
+      case 0: return 'Echo Reply';
+      case 3: return 'Destination Unreachable';
+      case 4: return 'Source Quench';
+      case 5: return 'Redirect';
+      case 8: return 'Echo Request';
+      case 11: return 'Time Exceeded';
+      case 12: return 'Parameter Problem';
+      case 13: return 'Timestamp Request';
+      case 14: return 'Timestamp Reply';
+      default: return `ICMP Type ${type}`;
+    }
+  };
+
+  const getICMPv6TypeName = (type: string, code: string) => {
+    const typeNum = parseInt(type);
+    switch (typeNum) {
+      case 1: return 'Destination Unreachable';
+      case 2: return 'Packet Too Big';
+      case 3: return 'Time Exceeded';
+      case 4: return 'Parameter Problem';
+      case 128: return 'Echo Request';
+      case 129: return 'Echo Reply';
+      case 133: return 'Router Solicitation';
+      case 134: return 'Router Advertisement';
+      case 135: return 'Neighbor Solicitation';
+      case 136: return 'Neighbor Advertisement';
+      default: return `ICMPv6 Type ${type}`;
+    }
+  };
+
+  const getDNSResponseCodeName = (code: string) => {
+    const codeNum = parseInt(code);
+    switch (codeNum) {
+      case 0: return 'No Error';
+      case 1: return 'Format Error';
+      case 2: return 'Server Failure';
+      case 3: return 'Name Error';
+      case 4: return 'Not Implemented';
+      case 5: return 'Refused';
+      default: return `Response Code ${code}`;
+    }
+  };
+
+  const getDHCPMessageTypeName = (type: string) => {
+    const typeNum = parseInt(type);
+    switch (typeNum) {
+      case 1: return 'DHCP Discover';
+      case 2: return 'DHCP Offer';
+      case 3: return 'DHCP Request';
+      case 4: return 'DHCP Decline';
+      case 5: return 'DHCP ACK';
+      case 6: return 'DHCP NAK';
+      case 7: return 'DHCP Release';
+      case 8: return 'DHCP Inform';
+      default: return `DHCP Type ${type}`;
+    }
+  };
+
+  const createDefaultPacket = (index: number) => {
+    return {
+      number: index + 1,
+      time: (index * 0.001).toFixed(6),
+      source: 'Unknown',
+      destination: 'Unknown',
+      protocol: 'Unknown',
+      length: 78,
+      info: 'Missing Packet Data'
+    };
+  };
+
   // Generate summary data from packets
   const generateSummaryData = (analysisData: any): ProcessedData => {
     const uniqueIPs = new Set<string>();
@@ -297,18 +623,15 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     const conversations = new Set<string>();
     
     analysisData.packets.forEach((packet: any) => {
-      // Track unique IPs
       const src = packet.source || 'Unknown';
       const dst = packet.destination || 'Unknown';
       
-      if (src !== 'Unknown') uniqueIPs.add(src.split(':')[0]); // Strip port if present
+      if (src !== 'Unknown') uniqueIPs.add(src.split(':')[0]);
       if (dst !== 'Unknown') uniqueIPs.add(dst.split(':')[0]);
       
-      // Track protocol counts
       const protocol = packet.protocol || 'Unknown';
       protocolCounts[protocol] = (protocolCounts[protocol] || 0) + 1;
       
-      // Calculate conversations (unique src-dst pairs)
       const pair = `${src}-${dst}`;
       const reversePair = `${dst}-${src}`;
       if (!conversations.has(pair) && !conversations.has(reversePair)) {
@@ -316,7 +639,6 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       }
     });
     
-    // Complete summary with computed values
     if (!analysisData.summary) {
       analysisData.summary = {};
     }
@@ -327,13 +649,11 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     analysisData.summary.startTime = analysisData.packets[0]?.time || '0.000000';
     analysisData.summary.endTime = analysisData.packets[analysisData.packets.length - 1]?.time || '0.000000';
     
-    // Add protocol counts to summary
     analysisData.summary.protocolCounts = Object.entries(protocolCounts).map(([protocol, count]) => ({
       protocol,
       count
     }));
     
-    // Add protocol data for charts
     analysisData.protocolData = Object.entries(protocolCounts)
       .sort((a, b) => b[1] - a[1])
       .map(([name, count]) => ({
@@ -341,12 +661,11 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
         value: count
       }));
     
-    // Generate time series data if it doesn't exist
     if (!analysisData.timeSeriesData || !analysisData.timeSeriesData.length) {
-      const timeIntervals = 10; // Split into 10 time intervals
+      const timeIntervals = 10;
       const startTime = parseFloat(analysisData.summary.startTime);
       const endTime = parseFloat(analysisData.summary.endTime) || startTime + 1;
-      const timeRange = endTime - startTime || 1; // Avoid division by zero
+      const timeRange = endTime - startTime || 1;
       const intervalSize = timeRange / timeIntervals;
       
       const timeSeriesData = Array(timeIntervals).fill(0).map((_, i) => {
@@ -359,7 +678,7 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
         }).length;
         
         return {
-          time: `${i * 10}%`, // Using percentage for simplicity
+          time: `${i * 10}%`,
           value: packetsInInterval
         };
       });
@@ -367,7 +686,6 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       analysisData.timeSeriesData = timeSeriesData;
     }
     
-    // Generate conversations data if it doesn't exist
     if (!analysisData.conversations || !analysisData.conversations.length) {
       const conversationMap = new Map();
       
@@ -394,7 +712,6 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
         }
       });
       
-      // Calculate duration for each conversation
       const conversationList = Array.from(conversationMap.values()).map(convo => {
         const duration = parseFloat(convo.endTime) - parseFloat(convo.startTime);
         return {
