@@ -5,7 +5,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { enhancePacketData, ProcessedData } from '../utils/packetEnhancer';
 import { applyAIEnhancement, createFallbackData } from '../utils/aiEnhancement';
 
-export { ProcessedData } from '../utils/packetEnhancer';
+export type { ProcessedData } from '../utils/packetEnhancer';
 
 export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) => {
   const { toast } = useToast();
