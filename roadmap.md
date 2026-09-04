@@ -16,10 +16,11 @@
 - [ ] Verify the proxy end to end (built-in chat + an invalid-key error path).
 - [ ] Surface provider/model status and real error text in `ApiKeySettings.tsx`.
 
-## Next: decoder coverage
-- [ ] Decoder capability registry reporting Available / Partial / Unavailable per protocol (no fabricated support claims).
-- [ ] Link/encapsulation: VLAN 802.1Q, QinQ, MPLS, PPPoE, GRE, VXLAN, GENEVE, SLL2, raw IP, loopback.
-- [ ] Network/transport: SCTP, IGMP, IP fragmentation, TCP stream reassembly.
-- [ ] Application: DNS/mDNS/LLMNR, DHCP/DHCPv6, HTTP/1.1, TLS handshake metadata, NTP, SNMP, SIP/SDP, RTP/RTCP, RADIUS, MQTT, CoAP, Modbus/TCP.
-- [ ] Telecom: GTPv1-U, GTPv2-C, PFCP, Diameter, SCTP-carried SIGTRAN (M3UA/SCCP) where genuinely decodable in TypeScript.
-- [ ] Decoder configuration UI + per-field evidence (packet number, byte offset).
+## Decoder coverage
+- [x] Decoder capability registry (Available / Partial / Unavailable) + "Decoders" tab.
+- [x] Deep byte-level decoder (`src/utils/decoders/deepDecoder.ts`): link types, VLAN/QinQ/MPLS/PPPoE/GRE/VXLAN/GENEVE, IPv4/IPv6/frags, TCP/UDP/SCTP/ICMP/IGMP/ARP, DNS/DHCP/HTTP/TLS/NTP/SNMP/SIP/RTP/RADIUS/MQTT/CoAP/Modbus, GTP-U/GTPv2-C/PFCP/Diameter.
+- [x] Both PCAP and PCAP-NG parsers now route every frame through the deep decoder.
+- [x] Removed the 10,000-packet display cap; packet count matches the capture.
+- [x] PacketDetails shows real decoded layers with byte offsets; fabricated placeholder values removed.
+- [ ] Optional: per-field byte highlighting in the hex view.
+
