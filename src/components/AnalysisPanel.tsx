@@ -154,7 +154,9 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="packets">Packets</TabsTrigger>
           <TabsTrigger value="conversations">Conversations</TabsTrigger>
+          <TabsTrigger value="decoders">Decoders</TabsTrigger>
         </TabsList>
+
         
         <TabsContent value="overview" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
