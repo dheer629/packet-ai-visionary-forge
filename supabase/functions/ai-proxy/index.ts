@@ -405,9 +405,17 @@ Deno.serve(async (req) => {
         apiKey,
         model,
         messages,
-        Math.min(Math.max(body.maxTokens ?? 1500, 1), 8192),
+        // Floor of 256: reasoning-capable models spend part of the budget on
+        // thinking, and a tighter cap returns an empty answer.
+        Math.min(Math.max(body.maxTokens ?? 1500, 256), 8192),
         Math.min(Math.max(body.temperature ?? 0.4, 0), 2),
       );
+      if (!result.text.trim()) {
+        return json({
+          error:
+            "The model returned no text. It may have hit the output limit before answering — try a shorter prompt or a larger token budget.",
+        }, 502);
+      }
       return json(result);
     }
 
