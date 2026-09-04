@@ -54,7 +54,7 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
         <TabsContent value="hex" className="mt-4">
           <ScrollArea className="h-60">
             <div className="font-mono text-xs whitespace-pre p-2">
-              {packet.hexDump || "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\n0000: 45 00 00 73 00 00 40 00 40 11 B8 61 C0 A8 00 01\n0010: C0 A8 00 C7 00 35 E1 15 00 5F 96 9B 84 00 00 01"}
+              {packet.hexDump || "No hex bytes captured for this packet."}
             </div>
           </ScrollArea>
         </TabsContent>
@@ -62,10 +62,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
         <TabsContent value="ascii" className="mt-4">
           <ScrollArea className="h-60">
             <div className="font-mono text-xs whitespace-pre p-2">
-              {packet.asciiDump || "E..s..@.@..a....\n.....5..._......."}
+              {packet.asciiDump || "No ASCII payload captured for this packet."}
             </div>
           </ScrollArea>
         </TabsContent>
+
         
         <TabsContent value="headers" className="mt-4">
           <ScrollArea className="h-60">
@@ -228,16 +229,54 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
         
         <TabsContent value="layers" className="mt-4">
           <ScrollArea className="h-60">
-            <div className="space-y-2">
-              {(packet.layers || ['Ethernet', 'IP', 'TCP', 'TLS']).map((layer: string, idx: number) => (
-                <div key={idx} className="flex items-center space-x-2 p-2 bg-cyber-muted bg-opacity-20 rounded">
-                  <span className="w-6 h-6 flex items-center justify-center bg-cyber-primary bg-opacity-30 rounded-full text-xs">{idx+1}</span>
-                  <span className="font-mono text-sm">{layer}</span>
-                </div>
-              ))}
-            </div>
+            {packet.decodedLayers?.length ? (
+              <div className="space-y-2 pr-2">
+                {packet.protocolStack?.length > 0 && (
+                  <p className="font-mono text-xs text-cyber-secondary">
+                    {packet.protocolStack.join(' → ')}
+                  </p>
+                )}
+                {packet.decodedLayers.map((layer: any, idx: number) => (
+                  <div key={idx} className="rounded bg-cyber-muted bg-opacity-20 p-2">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-mono text-sm text-cyber-accent">{layer.name}</span>
+                      <span className="font-mono text-[10px] text-cyber-foreground/60">
+                        offset {layer.offset}
+                        {layer.length ? ` · ${layer.length} bytes` : ''}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      {Object.entries(layer.fields || {}).map(([k, v]) => (
+                        <React.Fragment key={k}>
+                          <p className="text-cyber-foreground/70">{k}</p>
+                          <p className="font-mono break-all">{String(v)}</p>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {packet.truncated && (
+                  <p className="text-xs text-cyber-accent">
+                    Frame was truncated in the capture — decoding stopped at the last complete header.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(packet.layers || []).map((layer: string, idx: number) => (
+                  <div key={idx} className="flex items-center space-x-2 rounded bg-cyber-muted bg-opacity-20 p-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyber-primary bg-opacity-30 text-xs">{idx + 1}</span>
+                    <span className="font-mono text-sm">{layer}</span>
+                  </div>
+                ))}
+                {!packet.layers?.length && (
+                  <p className="text-xs text-cyber-foreground/70">No decoded layers available for this packet.</p>
+                )}
+              </div>
+            )}
           </ScrollArea>
         </TabsContent>
+
       </Tabs>
     </div>
   );
