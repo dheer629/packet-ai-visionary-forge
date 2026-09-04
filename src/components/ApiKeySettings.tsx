@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Key, Info, Check, X, RefreshCw } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { modelProviders, ModelProvider, fetchAvailableModels, ModelOption } from '../services/modelProviders';
+import { modelProviders, fetchAvailableModels, validateProvider, ModelOption } from '../services/modelProviders';
 
 interface ApiKey {
   id: string;
