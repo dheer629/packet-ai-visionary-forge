@@ -281,7 +281,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="decoders" className="mt-4">
+          <DecoderCapabilities />
+        </TabsContent>
       </Tabs>
+
     </div>
   );
 };
