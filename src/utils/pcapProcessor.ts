@@ -200,7 +200,20 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         if (srcHost && srcHost !== 'Unknown') ipAddresses.add(srcHost);
         if (dstHost && dstHost !== 'Unknown') ipAddresses.add(dstHost);
         protocolCounts[decoded.protocol] = (protocolCounts[decoded.protocol] || 0) + 1;
-        conversations.add([srcHost, dstHost].sort().join('-'));
+        const convKey = [srcHost, dstHost].sort().join('-');
+        const existing = conversations.get(convKey);
+        if (existing) {
+          existing.packetCount++;
+          existing.bytes += inclLen;
+          existing.endTime = timestamp;
+        } else {
+          conversations.set(convKey, {
+            endpointA: srcHost, endpointB: dstHost,
+            packetCount: 1, bytes: inclLen,
+            startTime: timestamp, endTime: timestamp,
+          });
+        }
+
 
       
         // Always set a relative time once we know the minimum timestamp
