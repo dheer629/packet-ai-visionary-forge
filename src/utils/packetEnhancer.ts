@@ -84,95 +84,79 @@ export const enhancePacketData = (analysisData: any, file: File): ProcessedData 
   return analysisData;
 };
 
-// Improved function to decode raw packet data from PCAP
+// Raw byte decoding is delegated to the deep decoder, which walks the full
+// encapsulation chain (VLAN/MPLS/GRE/VXLAN/GTP...) instead of assuming
+// Ethernet -> IP -> TCP.
 const decodeRawPacketData = (enhancedPacket: any, packet: any) => {
   const rawData = packet.rawData || packet.data;
-  if (!rawData || !Array.isArray(rawData)) {
+  if (!rawData || (!Array.isArray(rawData) && !(rawData instanceof Uint8Array))) {
     console.warn('No valid raw data found for packet', packet.number);
     return decodeBasicPacketFields(enhancedPacket, packet);
   }
-  
-  console.log(`Decoding packet ${packet.number}, data length: ${rawData.length}, link type: ${packet.linkType || 'unknown'}`);
-  
-  let offset = 0;
-  const linkType = packet.linkType || 1;
-  
-  try {
-    if (linkType === 113) {
-      // Linux SLL (Linux cooked capture) header - 16 bytes
-      if (rawData.length < 16) {
-        console.warn(`Packet ${packet.number} too short for Linux SLL header`);
-        return decodeBasicPacketFields(enhancedPacket, packet);
-      }
-      
-      // Parse Linux SLL header
-      const packetType = (rawData[0] << 8) | rawData[1];
-      const addressType = (rawData[2] << 8) | rawData[3];
-      const addressLength = (rawData[4] << 8) | rawData[5];
-      const protocolType = (rawData[14] << 8) | rawData[15];
-      
-      console.log(`Linux SLL: packet_type=${packetType}, addr_type=${addressType}, protocol=0x${protocolType.toString(16)}`);
-      
-      enhancedPacket.ethernet = {
-        type: `0x${protocolType.toString(16).padStart(4, '0')}`
-      };
-      
-      offset = 16;
-      
-      // Check protocol type to determine next layer
-      if (protocolType === 0x0800) {
-        // IPv4
-        enhancedPacket = decodeIPv4Header(enhancedPacket, rawData, offset);
-      } else if (protocolType === 0x86DD) {
-        // IPv6
-        enhancedPacket = decodeIPv6Header(enhancedPacket, rawData, offset);
-      } else if (protocolType === 0x0806) {
-        // ARP
-        enhancedPacket = decodeARPFromRaw(enhancedPacket, rawData, offset);
-      } else {
-        enhancedPacket.protocol = `Unknown Protocol 0x${protocolType.toString(16)}`;
-        enhancedPacket.info = `Unknown protocol type: 0x${protocolType.toString(16)}`;
-      }
-      
-    } else {
-      // Standard Ethernet header - 14 bytes
-      if (rawData.length < 14) {
-        console.warn(`Packet ${packet.number} too short for Ethernet header`);
-        return decodeBasicPacketFields(enhancedPacket, packet);
-      }
-      
-      const destMac = rawData.slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join(':');
-      const srcMac = rawData.slice(6, 12).map(b => b.toString(16).padStart(2, '0')).join(':');
-      const etherType = (rawData[12] << 8) | rawData[13];
-      
-      enhancedPacket.ethernet = {
-        destMac,
-        srcMac,
-        type: `0x${etherType.toString(16).padStart(4, '0')}`
-      };
-      
-      offset = 14;
-      
-      if (etherType === 0x0800) {
-        enhancedPacket = decodeIPv4Header(enhancedPacket, rawData, offset);
-      } else if (etherType === 0x86DD) {
-        enhancedPacket = decodeIPv6Header(enhancedPacket, rawData, offset);
-      } else if (etherType === 0x0806) {
-        enhancedPacket = decodeARPFromRaw(enhancedPacket, rawData, offset);
-      } else {
-        enhancedPacket.protocol = `Unknown EtherType 0x${etherType.toString(16)}`;
-        enhancedPacket.info = `Unknown EtherType: 0x${etherType.toString(16)}`;
-      }
+
+  const result = decodePacketBytes(rawData, packet.linkType ?? 1);
+
+  enhancedPacket.protocol = result.protocol;
+  enhancedPacket.source = result.source;
+  enhancedPacket.destination = result.destination;
+  enhancedPacket.info = result.info;
+  enhancedPacket.protocolStack = result.stack;
+  enhancedPacket.decodedLayers = result.layers;
+  enhancedPacket.truncated = result.truncated;
+  enhancedPacket.length = enhancedPacket.length || (rawData as any).length || 0;
+
+  // Keep the legacy shape that existing views read from.
+  for (const layer of result.layers) {
+    const f = layer.fields as any;
+    switch (layer.name) {
+      case 'Ethernet':
+        enhancedPacket.ethernet = { destMac: f['Destination MAC'], srcMac: f['Source MAC'], type: f.EtherType };
+        break;
+      case 'IPv4':
+        enhancedPacket.ip = {
+          version: '4', headerLength: String(f['Header length']), ttl: String(f.TTL),
+          protocol: String(f.Protocol), source: f.Source, destination: f.Destination,
+          flags: String(f.Flags), fragOffset: String(f['Fragment offset']),
+        };
+        break;
+      case 'IPv6':
+        enhancedPacket.ipv6 = {
+          version: '6', hopLimit: String(f['Hop limit']), nextHeader: String(f['Next header']),
+          source: f.Source, destination: f.Destination, flowLabel: String(f['Flow label']),
+        };
+        break;
+      case 'TCP':
+        enhancedPacket.tcp = {
+          srcPort: String(f['Source port']), dstPort: String(f['Destination port']),
+          seq: String(f['Sequence number']), ack: String(f['Acknowledgment number']),
+          flags: String(f.Flags), window: String(f['Window size']), length: String(f['Payload length']),
+        };
+        break;
+      case 'UDP':
+        enhancedPacket.udp = { srcPort: String(f['Source port']), dstPort: String(f['Destination port']), length: String(f.Length) };
+        break;
+      case 'ICMP':
+        enhancedPacket.icmp = { type: String(f.Type), code: String(f.Code), typeName: String(f.Type) };
+        break;
+      case 'ICMPv6':
+        enhancedPacket.icmpv6 = { type: String(f.Type), code: String(f.Code), typeName: String(f.Type) };
+        break;
+      case 'ARP':
+      case 'RARP':
+        enhancedPacket.arp = {
+          operation: String(f.Operation).includes('request') ? 'Request' : 'Reply',
+          senderMac: f['Sender MAC'], senderIP: f['Sender IP'],
+          targetMac: f['Target MAC'], targetIP: f['Target IP'],
+        };
+        break;
+      default:
+        break;
     }
-    
-  } catch (error) {
-    console.error(`Error decoding packet ${packet.number}:`, error);
-    enhancedPacket.protocol = 'Decode Error';
-    enhancedPacket.info = 'Failed to decode packet';
   }
-  
+
   return enhancedPacket;
 };
+
 
 // Improved IPv4 header decoder
 const decodeIPv4Header = (enhancedPacket: any, rawData: number[], offset: number) => {
