@@ -16,6 +16,8 @@ import {
   decodeNTPLayer,
   decodeSNMPLayer
 } from './protocolDecoders';
+import { decodePacketBytes } from './decoders/deepDecoder';
+
 
 export interface ProcessedData {
   packets: any[];
