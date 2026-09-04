@@ -270,7 +270,9 @@ const ApiKeySettings = () => {
                 <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                 <p className="text-blue-700">
                   Connect to AI services by adding API keys for various providers. The system will automatically detect available models for each provider.
-                  API keys are stored in your browser's local storage and are never sent to our servers.
+                  Keys are stored in this browser's local storage. Each request relays your key
+                  through this app's own server function to the provider — providers reject direct
+                  browser calls — where it is used once and never logged or saved.
                 </p>
               </div>
               
