@@ -60,7 +60,7 @@ function safeError(e: unknown): string {
   if (msg.includes("aborted") || msg.includes("AbortError")) {
     return "The provider did not respond in time. Please try again.";
   }
-  return msg.replace(/(sk-|key-|xai-|gsk_|sk-ant-)[A-Za-z0-9_\-]{8,}/g, "[redacted]");
+  return msg.replace(/(sk-|key-|xai-|gsk_|sk-ant-)[A-Za-z0-9_-]{8,}/g, "[redacted]");
 }
 
 const titleCase = (id: string) =>
