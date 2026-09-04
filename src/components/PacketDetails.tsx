@@ -54,7 +54,7 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
         <TabsContent value="hex" className="mt-4">
           <ScrollArea className="h-60">
             <div className="font-mono text-xs whitespace-pre p-2">
-              {packet.hexDump || "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\n0000: 45 00 00 73 00 00 40 00 40 11 B8 61 C0 A8 00 01\n0010: C0 A8 00 C7 00 35 E1 15 00 5F 96 9B 84 00 00 01"}
+              {packet.hexDump || "No hex bytes captured for this packet."}
             </div>
           </ScrollArea>
         </TabsContent>
@@ -62,10 +62,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
         <TabsContent value="ascii" className="mt-4">
           <ScrollArea className="h-60">
             <div className="font-mono text-xs whitespace-pre p-2">
-              {packet.asciiDump || "E..s..@.@..a....\n.....5..._......."}
+              {packet.asciiDump || "No ASCII payload captured for this packet."}
             </div>
           </ScrollArea>
         </TabsContent>
+
         
         <TabsContent value="headers" className="mt-4">
           <ScrollArea className="h-60">
