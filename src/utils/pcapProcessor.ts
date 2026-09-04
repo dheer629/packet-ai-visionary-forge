@@ -559,9 +559,8 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
             
             // Add packet to collection and update stats
             packetSizes.push(packetLen);
-            if (packetCount < 10000) {
-              packets.push(packetDetails);
-            }
+            packets.push(packetDetails);
+
             
             packetCount++;
           }
