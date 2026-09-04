@@ -226,10 +226,9 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         // Add packet size to statistics
         packetSizes.push(inclLen);
       
-        // Store the packet (limit to 1000 for browser performance)
-        if (packetCount < 10000) {
-          packets.push(packetDetails);
-        }
+        // Store every packet so the displayed count matches the capture
+        packets.push(packetDetails);
+
       
         // Move to next packet
         offset += inclLen;
