@@ -1,3 +1,5 @@
+import { decodePacketBytes } from './decoders/deepDecoder';
+
 /**
  * Process a PCAP file and extract network data in a browser environment
  */
