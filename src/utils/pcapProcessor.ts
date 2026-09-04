@@ -149,72 +149,16 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
           console.log(`Packet #${packetCount + 1} at offset ${offset}, length ${inclLen}`);
           console.log(`Packet data (first ${dumpBytes} bytes):`, Array.from(packetBytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
         }
-        
+
         // Full protocol decoding is delegated to the byte-level decoder so the
         // whole encapsulation chain is walked, not just Ethernet/IP/TCP.
-        const frame = new Uint8Array(buffer.slice(offset, offset + inclLen));
-        const decoded = decodePacketBytes(frame, network);
+        applyDecodedFrame(
+          packetDetails,
+          new Uint8Array(buffer.slice(offset, offset + inclLen)),
+          network, inclLen, timestamp,
+          ipAddresses, protocolCounts, conversations
+        );
 
-        packetDetails.protocol = decoded.protocol;
-        packetDetails.source = decoded.source;
-        packetDetails.destination = decoded.destination;
-        packetDetails.info = decoded.info;
-        packetDetails.layers = decoded.stack;
-        packetDetails.protocolStack = decoded.stack;
-        packetDetails.decodedLayers = decoded.layers;
-        packetDetails.truncated = decoded.truncated;
-
-        for (const layer of decoded.layers) {
-          const f: any = layer.fields;
-          if (layer.name === 'Ethernet') {
-            packetDetails.ethernet = { destMac: f['Destination MAC'], srcMac: f['Source MAC'], type: f.EtherType };
-          } else if (layer.name === 'IPv4') {
-            packetDetails.ip = {
-              version: '4', headerLength: String(f['Header length']), ttl: String(f.TTL),
-              protocol: String(f.Protocol), source: f.Source, destination: f.Destination,
-            };
-          } else if (layer.name === 'IPv6') {
-            packetDetails.ipv6 = {
-              version: '6', hopLimit: String(f['Hop limit']), nextHeader: String(f['Next header']),
-              source: f.Source, destination: f.Destination, flowLabel: String(f['Flow label']),
-            };
-          } else if (layer.name === 'TCP') {
-            packetDetails.tcp = {
-              srcPort: String(f['Source port']), dstPort: String(f['Destination port']),
-              seq: String(f['Sequence number']), ack: String(f['Acknowledgment number']),
-              flags: String(f.Flags), window: String(f['Window size']), length: String(f['Payload length']),
-            };
-          } else if (layer.name === 'UDP') {
-            packetDetails.udp = { srcPort: String(f['Source port']), dstPort: String(f['Destination port']), length: String(f.Length) };
-          } else if (layer.name === 'ARP' || layer.name === 'RARP') {
-            packetDetails.arp = {
-              operation: String(f.Operation).includes('request') ? 'Request' : 'Reply',
-              senderMac: f['Sender MAC'], senderIP: f['Sender IP'],
-              targetMac: f['Target MAC'], targetIP: f['Target IP'],
-            };
-          } else if (layer.name === 'ICMP' || layer.name === 'ICMPv6') {
-            packetDetails[layer.name.toLowerCase()] = { type: String(f.Type), code: String(f.Code), typeName: String(f.Type) };
-          }
-        }
-
-        const srcHost = String(decoded.source).split(':').slice(0, -1).join(':') || decoded.source;
-        const dstHost = String(decoded.destination).split(':').slice(0, -1).join(':') || decoded.destination;
-        if (srcHost && srcHost !== 'Unknown') ipAddresses.add(srcHost);
-        if (dstHost && dstHost !== 'Unknown') ipAddresses.add(dstHost);
-        protocolCounts[decoded.protocol] = (protocolCounts[decoded.protocol] || 0) + 1;
-        const convKey = [srcHost, dstHost].sort().join('-');
-        const existing = conversations.get(convKey);
-        if (existing) {
-          existing.packetCount++;
-          existing.bytes += inclLen;
-          existing.endTime = timestamp;
-        } else {
-          conversations.set(convKey, {
-            endpointA: srcHost, endpointB: dstHost,
-            packetCount: 1, bytes: inclLen,
-            startTime: timestamp, endTime: timestamp,
-          });
-        }
 
 
       
