@@ -465,92 +465,18 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
               packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
               packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
               
-              // Parse based on link type (only handling Ethernet for simplicity)
-              if (iface.linkType === 1 && capturedLen >= 14) {
-                packetDetails.layers.push("Ethernet");
-                
-                // Extract Ethernet header
-                const destMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + 6)));
-                const srcMac = formatMacAddress(new Uint8Array(dataView.buffer.slice(packetDataOffset + 6, packetDataOffset + 12)));
-                const etherType = dataView.getUint16(packetDataOffset + 12, false);
-                
-                packetDetails.ethernet = {
-                  destMac,
-                  srcMac,
-                  type: `0x${etherType.toString(16).padStart(4, '0')}`
-                };
-                
-                // Further parsing for IP, etc. (similar to parseActualPcapData)
-                if (etherType === 0x0800) { // IPv4
-                  packetDetails.protocol = "IPv4";
-                  packetDetails.layers.push("IPv4");
-                  protocolCounts["IPv4"] = (protocolCounts["IPv4"] || 0) + 1;
-                  
-                  // Parse IPv4 header if we have enough data
-                  if (capturedLen >= 14 + 20) {
-                    const ipVer = (dataView.getUint8(packetDataOffset + 14) >> 4) & 0xF;
-                    if (ipVer === 4) {
-                      const ipHeaderLength = (dataView.getUint8(packetDataOffset + 14) & 0x0F) * 4;
-                      const protocol = dataView.getUint8(packetDataOffset + 14 + 9);
-                      const sourceIP = formatIPv4(dataView, packetDataOffset + 14 + 12);
-                      const destIP = formatIPv4(dataView, packetDataOffset + 14 + 16);
-                      
-                      packetDetails.source = sourceIP;
-                      packetDetails.destination = destIP;
-                      ipAddresses.add(sourceIP);
-                      ipAddresses.add(destIP);
-                      
-                      // Protocol identification
-                      const protocolName = getProtocolName(protocol);
-                      packetDetails.protocol = protocolName;
-                      protocolCounts[protocolName] = (protocolCounts[protocolName] || 0) + 1;
-                      
-                      packetDetails.info = `${sourceIP} → ${destIP} (${protocolName})`;
-                      
-                      // For TCP and UDP, add port information
-                      const ipHeaderEnd = packetDataOffset + 14 + ipHeaderLength;
-                      
-                      if (protocol === 6 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // TCP
-                        const srcPort = dataView.getUint16(ipHeaderEnd, false);
-                        const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
-                        packetDetails.source = `${sourceIP}:${srcPort}`;
-                        packetDetails.destination = `${destIP}:${dstPort}`;
-                        packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (TCP)`;
-                      } else if (protocol === 17 && ipHeaderEnd + 8 <= packetDataOffset + capturedLen) { // UDP
-                        const srcPort = dataView.getUint16(ipHeaderEnd, false);
-                        const dstPort = dataView.getUint16(ipHeaderEnd + 2, false);
-                        packetDetails.source = `${sourceIP}:${srcPort}`;
-                        packetDetails.destination = `${destIP}:${dstPort}`;
-                        packetDetails.info = `${sourceIP}:${srcPort} → ${destIP}:${dstPort} (UDP)`;
-                      }
-                    }
-                  }
-                } else if (etherType === 0x0806) { // ARP
-                  packetDetails.protocol = "ARP";
-                  packetDetails.layers.push("ARP");
-                  protocolCounts["ARP"] = (protocolCounts["ARP"] || 0) + 1;
-                  packetDetails.info = "ARP";
-                } else if (etherType === 0x86DD) { // IPv6
-                  packetDetails.protocol = "IPv6";
-                  packetDetails.layers.push("IPv6");
-                  protocolCounts["IPv6"] = (protocolCounts["IPv6"] || 0) + 1;
-                  packetDetails.info = "IPv6";
-                } else {
-                  packetDetails.protocol = `EtherType 0x${etherType.toString(16).padStart(4, '0')}`;
-                  protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
-                  packetDetails.info = `EtherType: 0x${etherType.toString(16).padStart(4, '0')}`;
-                }
-              } else {
-                packetDetails.protocol = `Link-type ${iface.linkType}`;
-                packetDetails.info = `Unsupported link-layer type: ${iface.linkType}`;
-                protocolCounts[packetDetails.protocol] = (protocolCounts[packetDetails.protocol] || 0) + 1;
-              }
-              
+              const frame = new Uint8Array(
+                dataView.buffer.slice(packetDataOffset, packetDataOffset + capturedLen)
+              );
+              applyDecodedFrame(
+                packetDetails, frame, iface.linkType, capturedLen, timestampSec,
+                ipAddresses, protocolCounts, conversations
+              );
+
               // Add packet to collection and update stats
               packetSizes.push(capturedLen);
-              if (packetCount < 10000) {
-                packets.push(packetDetails);
-              }
+              packets.push(packetDetails);
+
               
               packetCount++;
               
