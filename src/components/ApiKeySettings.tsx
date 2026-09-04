@@ -291,38 +291,56 @@ const ApiKeySettings = () => {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      {modelProviders.find(p => p.id === selectedProvider)?.description || ''}
+                      {currentProvider?.description || ''}
+                      {currentProvider?.keyUrl && (
+                        <>
+                          {' '}
+                          <a
+                            href={currentProvider.keyUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="underline underline-offset-2"
+                          >
+                            Get a key
+                          </a>
+                        </>
+                      )}
                     </p>
                   </div>
-                  
+
                   <div className="col-span-8 space-y-2">
-                    <Label htmlFor="api-key-value">API Key</Label>
+                    <Label htmlFor="api-key-value">
+                      {keyRequired ? 'API Key' : 'API Key (not required)'}
+                    </Label>
                     <div className="flex gap-2">
-                      <Input 
-                        id="api-key-value" 
-                        value={newKeyValue} 
-                        onChange={(e) => setNewKeyValue(e.target.value)} 
+                      <Input
+                        id="api-key-value"
+                        value={newKeyValue}
+                        onChange={(e) => setNewKeyValue(e.target.value)}
                         type="password"
-                        placeholder="Enter API key"
+                        placeholder={keyRequired ? 'Enter API key' : 'No key needed for built-in models'}
+                        disabled={!keyRequired}
                         className="flex-grow"
                       />
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={testApiConnection}
-                        disabled={testingConnection || !newKeyValue}
+                        disabled={testingConnection || (keyRequired && !newKeyValue.trim())}
                       >
                         {testingConnection ? 'Testing...' : 'Test'}
                       </Button>
                     </div>
                   </div>
                 </div>
-                
-                <Button 
+
+                <Button
                   onClick={addApiKey}
                   className="w-full"
-                  disabled={testingConnection || !selectedProvider || !newKeyValue}
+                  disabled={testingConnection || !selectedProvider || (keyRequired && !newKeyValue.trim())}
                 >
-                  {apiKeys.some(key => key.providerId === selectedProvider) ? 'Update API Key' : 'Add API Key'}
+                  {apiKeys.some(key => key.providerId === selectedProvider)
+                    ? 'Update Connection'
+                    : keyRequired ? 'Add API Key' : 'Connect Built-in AI'}
                 </Button>
               </div>
               
