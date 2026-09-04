@@ -1,6 +1,100 @@
 import { decodePacketBytes } from './decoders/deepDecoder';
 
 /**
+ * Decode one captured frame with the byte-level decoder and map the result onto
+ * the packet object plus the capture-wide statistics. Only captured bytes are
+ * used — nothing is inferred or invented.
+ */
+function applyDecodedFrame(
+  packetDetails: any,
+  frame: Uint8Array,
+  linkType: number,
+  length: number,
+  timestamp: number,
+  ipAddresses: Set<any>,
+  protocolCounts: Record<string, number>,
+  conversations: Map<string, any>
+) {
+  const decoded = decodePacketBytes(frame, linkType);
+
+  packetDetails.protocol = decoded.protocol;
+  packetDetails.source = decoded.source;
+  packetDetails.destination = decoded.destination;
+  packetDetails.info = decoded.info;
+  packetDetails.layers = decoded.stack;
+  packetDetails.protocolStack = decoded.stack;
+  packetDetails.decodedLayers = decoded.layers;
+  packetDetails.truncated = decoded.truncated;
+
+  for (const layer of decoded.layers) {
+    const f: any = layer.fields;
+    if (layer.name === 'Ethernet') {
+      packetDetails.ethernet = { destMac: f['Destination MAC'], srcMac: f['Source MAC'], type: f.EtherType };
+    } else if (layer.name === 'IPv4') {
+      packetDetails.ip = {
+        version: '4', headerLength: String(f['Header length']), ttl: String(f.TTL),
+        protocol: String(f.Protocol), source: f.Source, destination: f.Destination,
+      };
+    } else if (layer.name === 'IPv6') {
+      packetDetails.ipv6 = {
+        version: '6', hopLimit: String(f['Hop limit']), nextHeader: String(f['Next header']),
+        source: f.Source, destination: f.Destination, flowLabel: String(f['Flow label']),
+      };
+    } else if (layer.name === 'TCP') {
+      packetDetails.tcp = {
+        srcPort: String(f['Source port']), dstPort: String(f['Destination port']),
+        seq: String(f['Sequence number']), ack: String(f['Acknowledgment number']),
+        flags: String(f.Flags), window: String(f['Window size']), length: String(f['Payload length']),
+      };
+    } else if (layer.name === 'UDP') {
+      packetDetails.udp = {
+        srcPort: String(f['Source port']), dstPort: String(f['Destination port']), length: String(f.Length),
+      };
+    } else if (layer.name === 'ARP' || layer.name === 'RARP') {
+      packetDetails.arp = {
+        operation: String(f.Operation).toLowerCase().includes('request') ? 'Request' : 'Reply',
+        senderMac: f['Sender MAC'], senderIP: f['Sender IP'],
+        targetMac: f['Target MAC'], targetIP: f['Target IP'],
+      };
+    } else if (layer.name === 'ICMP' || layer.name === 'ICMPv6') {
+      packetDetails[layer.name.toLowerCase()] = {
+        type: String(f.Type), code: String(f.Code), typeName: String(f.Type),
+      };
+    }
+  }
+
+  const hostOf = (endpoint: string) => {
+    const parts = String(endpoint).split(':');
+    return parts.length > 1 ? parts.slice(0, -1).join(':') : endpoint;
+  };
+  const srcHost = hostOf(decoded.source);
+  const dstHost = hostOf(decoded.destination);
+  if (srcHost && srcHost !== 'Unknown') ipAddresses.add(srcHost);
+  if (dstHost && dstHost !== 'Unknown') ipAddresses.add(dstHost);
+  protocolCounts[decoded.protocol] = (protocolCounts[decoded.protocol] || 0) + 1;
+
+  const convKey = [srcHost, dstHost].sort().join(' - ');
+  const existing = conversations.get(convKey);
+  if (existing) {
+    existing.packetCount++;
+    existing.bytes += length;
+    existing.endTime = timestamp;
+  } else {
+    conversations.set(convKey, {
+      endpointA: srcHost,
+      endpointB: dstHost,
+      source: srcHost,
+      destination: dstHost,
+      protocol: decoded.protocol,
+      packetCount: 1,
+      bytes: length,
+      startTime: timestamp,
+      endTime: timestamp,
+    });
+  }
+}
+
+/**
  * Process a PCAP file and extract network data in a browser environment
  */
 export const processPcapFile = async (file: File, progressCallback?: (progress: number) => void): Promise<any> => {
