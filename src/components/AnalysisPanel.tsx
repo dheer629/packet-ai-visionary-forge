@@ -1,6 +1,8 @@
 
 import React, { useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import DecoderCapabilities from './DecoderCapabilities';
+
 import { Separator } from '@/components/ui/separator';
 import VisualizationChart from './VisualizationChart';
 import { Card } from '@/components/ui/card';
