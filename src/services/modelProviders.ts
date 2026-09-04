@@ -203,3 +203,29 @@ export async function fetchAvailableModels(
   if (!provider) return [];
   return provider.getModels(apiKey);
 }
+
+/**
+ * Validates a key and returns the live model list together with the provider's
+ * own error text, so the UI can show why a key was rejected instead of a
+ * generic failure.
+ */
+export async function validateProvider(
+  providerId: string,
+  apiKey: string,
+): Promise<{ ok: boolean; models: ModelOption[]; error?: string }> {
+  const provider = getModelProvider(providerId);
+  if (!provider) return { ok: false, models: [], error: `Unknown provider "${providerId}".` };
+
+  const { data, error } = await callAiProxy<{ models: ModelOption[] }>({
+    action: 'models',
+    provider: providerId,
+    apiKey,
+  });
+
+  if (error) return { ok: false, models: [], error };
+  const models = data?.models ?? [];
+  if (!models.length) {
+    return { ok: false, models: [], error: 'The key was accepted but no usable chat models were returned.' };
+  }
+  return { ok: true, models };
+}
