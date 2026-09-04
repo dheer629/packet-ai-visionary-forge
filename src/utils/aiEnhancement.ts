@@ -7,25 +7,36 @@ export const applyAIEnhancement = async (
   onAiEnrichmentChange: (value: boolean) => void,
   showToast: (toast: any) => void
 ): Promise<ProcessedData> => {
-  // Check if we have API keys available for AI enhancement
-  const apiKeys = JSON.parse(localStorage.getItem('nettracer-api-keys') || '[]');
-  let aiProviderKey = null;
-  let aiProvider = null;
-  
-  // Check for available AI providers in this order of preference
-  const preferredProviders = ['openai', 'anthropic', 'cohere', 'groq', 'deepseek'];
-  
+  // Prefer a user-configured provider; otherwise fall back to the built-in
+  // models, which need no key.
+  let apiKeys: any[] = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem('nettracer-api-keys') || '[]');
+    if (Array.isArray(parsed)) apiKeys = parsed;
+  } catch {
+    apiKeys = [];
+  }
+
+  let aiProviderKey: any = null;
+  let aiProvider: string | null = null;
+
+  const preferredProviders = ['openai', 'anthropic', 'google', 'cohere', 'groq', 'deepseek', 'xai', 'mistral', 'openrouter', 'together'];
+
   for (const providerId of preferredProviders) {
-    const providerKey = apiKeys.find((key: any) => key.providerId === providerId && key.value);
+    const providerKey = apiKeys.find((key: any) => key.providerId === providerId && key.value && key.selectedModel);
     if (providerKey) {
       aiProviderKey = providerKey;
       aiProvider = providerId;
       break;
     }
   }
-  
-  // AI enhancement if keys are available
-  if (aiProviderKey && aiProviderKey.value && aiProviderKey.selectedModel) {
+
+  if (!aiProviderKey) {
+    aiProvider = 'lovable';
+    aiProviderKey = { name: 'Built-in AI', value: '', selectedModel: 'google/gemini-3.7-flash' };
+  }
+
+  if (aiProviderKey.selectedModel) {
     try {
       onAiEnrichmentChange(true);
       showToast({

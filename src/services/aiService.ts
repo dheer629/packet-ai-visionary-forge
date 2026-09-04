@@ -1,11 +1,11 @@
-
-import { modelProviders } from './modelProviders';
+import { callAiProxy, getModelProvider } from './modelProviders';
 
 interface AIRequestOptions {
   providerId: string;
   apiKey: string;
   modelId: string;
-  prompt: string;
+  prompt?: string;
+  messages?: { role: 'system' | 'user' | 'assistant'; content: string }[];
   maxTokens?: number;
   temperature?: number;
 }
@@ -20,327 +20,62 @@ export interface AIResponse {
   error?: string;
 }
 
-// Get the API key and selected model for a provider
+/** Reads the stored key/model settings for a provider. */
 export const getProviderSettings = (providerId: string) => {
   const savedKeys = localStorage.getItem('nettracer-api-keys');
   if (!savedKeys) return null;
-  
-  const apiKeys = JSON.parse(savedKeys);
-  return apiKeys.find((key: any) => key.providerId === providerId);
+
+  try {
+    const apiKeys = JSON.parse(savedKeys);
+    return Array.isArray(apiKeys)
+      ? apiKeys.find((key: { providerId: string }) => key.providerId === providerId)
+      : null;
+  } catch {
+    return null;
+  }
 };
 
+/**
+ * Sends one chat request. The vendor call happens inside the `ai-proxy` edge
+ * function, so the browser never performs a cross-origin request that the
+ * provider would reject at preflight.
+ */
 export async function callAIModel(options: AIRequestOptions): Promise<AIResponse> {
-  const { providerId, apiKey, modelId, prompt, maxTokens = 1000, temperature = 0.7 } = options;
-  
-  // Find the provider
-  const provider = modelProviders.find(p => p.id === providerId);
+  const {
+    providerId,
+    apiKey,
+    modelId,
+    prompt,
+    messages,
+    maxTokens = 1500,
+    temperature = 0.4,
+  } = options;
+
+  const provider = getModelProvider(providerId);
   if (!provider) {
-    return { text: '', error: 'Provider not found' };
+    return { text: '', error: `Unknown AI provider "${providerId}".` };
   }
-  
-  switch (providerId) {
-    case 'openai':
-      return callOpenAI(apiKey, modelId, prompt, maxTokens, temperature);
-    case 'anthropic':
-      return callAnthropic(apiKey, modelId, prompt, maxTokens, temperature);
-    case 'deepseek':
-      return callDeepseek(apiKey, modelId, prompt, maxTokens, temperature);
-    case 'google':
-      return callGoogle(apiKey, modelId, prompt, maxTokens, temperature);
-    case 'cohere':
-      return callCohere(apiKey, modelId, prompt, maxTokens, temperature);
-    case 'groq':
-      return callGroq(apiKey, modelId, prompt, maxTokens, temperature);
-    default:
-      return { text: '', error: 'Unsupported provider' };
+  if (!provider.builtIn && !apiKey) {
+    return { text: '', error: `No API key saved for ${provider.name}.` };
   }
-}
+  if (!modelId) {
+    return { text: '', error: `No model selected for ${provider.name}.` };
+  }
 
-async function callOpenAI(
-  apiKey: string, 
-  modelId: string, 
-  prompt: string, 
-  maxTokens: number, 
-  temperature: number
-): Promise<AIResponse> {
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: maxTokens,
-        temperature: temperature,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { text: '', error: errorData.error?.message || 'OpenAI API error' };
-    }
-    
-    const data = await response.json();
-    return {
-      text: data.choices[0]?.message?.content || '',
-      usage: {
-        promptTokens: data.usage?.prompt_tokens || 0,
-        completionTokens: data.usage?.completion_tokens || 0,
-        totalTokens: data.usage?.total_tokens || 0,
-      }
-    };
-  } catch (error) {
-    console.error('OpenAI API error:', error);
-    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
+  const { data, error } = await callAiProxy<{
+    text: string;
+    usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  }>({
+    action: 'chat',
+    provider: providerId,
+    apiKey,
+    model: modelId,
+    prompt,
+    messages,
+    maxTokens,
+    temperature,
+  });
 
-async function callAnthropic(
-  apiKey: string, 
-  modelId: string, 
-  prompt: string, 
-  maxTokens: number, 
-  temperature: number
-): Promise<AIResponse> {
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: maxTokens,
-        temperature: temperature,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { text: '', error: errorData.error?.message || 'Anthropic API error' };
-    }
-    
-    const data = await response.json();
-    return {
-      text: data.content?.[0]?.text || '',
-      usage: {
-        promptTokens: data.usage?.input_tokens || 0,
-        completionTokens: data.usage?.output_tokens || 0,
-        totalTokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
-      }
-    };
-  } catch (error) {
-    console.error('Anthropic API error:', error);
-    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-async function callDeepseek(
-  apiKey: string, 
-  modelId: string, 
-  prompt: string, 
-  maxTokens: number, 
-  temperature: number
-): Promise<AIResponse> {
-  try {
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }],
-        max_tokens: maxTokens,
-        temperature: temperature,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { text: '', error: errorData.error?.message || 'Deepseek API error' };
-    }
-    
-    const data = await response.json();
-    return {
-      text: data.choices?.[0]?.message?.content || '',
-      usage: {
-        promptTokens: data.usage?.prompt_tokens || 0,
-        completionTokens: data.usage?.completion_tokens || 0,
-        totalTokens: data.usage?.total_tokens || 0,
-      }
-    };
-  } catch (error) {
-    console.error('Deepseek API error:', error);
-    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-async function callGoogle(
-  apiKey: string, 
-  modelId: string, 
-  prompt: string, 
-  maxTokens: number, 
-  temperature: number
-): Promise<AIResponse> {
-  try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: temperature,
-          maxOutputTokens: maxTokens,
-        }
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Google API error';
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error?.message || errorMessage;
-      } catch (e) {
-        // If we can't parse the error, just use the text
-        errorMessage = errorText || errorMessage;
-      }
-      console.error('Google API error response:', errorText);
-      return { text: '', error: errorMessage };
-    }
-    
-    const data = await response.json();
-    return {
-      text: data.candidates?.[0]?.content?.parts?.[0]?.text || '',
-      usage: {
-        promptTokens: data.usageMetadata?.promptTokenCount || 0,
-        completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
-        totalTokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0),
-      }
-    };
-  } catch (error) {
-    console.error('Google API error:', error);
-    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-async function callCohere(
-  apiKey: string, 
-  modelId: string, 
-  prompt: string, 
-  maxTokens: number, 
-  temperature: number
-): Promise<AIResponse> {
-  try {
-    const response = await fetch('https://api.cohere.ai/v1/chat', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modelId,
-        message: prompt,
-        max_tokens: maxTokens,
-        temperature: temperature,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { text: '', error: errorData.message || 'Cohere API error' };
-    }
-    
-    const data = await response.json();
-    return {
-      text: data.text || '',
-      usage: {
-        promptTokens: data.meta?.prompt_tokens || 0,
-        completionTokens: data.meta?.response_tokens || 0,
-        totalTokens: (data.meta?.prompt_tokens || 0) + (data.meta?.response_tokens || 0),
-      }
-    };
-  } catch (error) {
-    console.error('Cohere API error:', error);
-    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-async function callGroq(
-  apiKey: string, 
-  modelId: string, 
-  prompt: string, 
-  maxTokens: number, 
-  temperature: number
-): Promise<AIResponse> {
-  try {
-    // Groq uses OpenAI-compatible API
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: maxTokens,
-        temperature: temperature,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { text: '', error: errorData.error?.message || 'Groq API error' };
-    }
-    
-    const data = await response.json();
-    return {
-      text: data.choices[0]?.message?.content || '',
-      usage: {
-        promptTokens: data.usage?.prompt_tokens || 0,
-        completionTokens: data.usage?.completion_tokens || 0,
-        totalTokens: data.usage?.total_tokens || 0,
-      }
-    };
-  } catch (error) {
-    console.error('Groq API error:', error);
-    return { text: '', error: error instanceof Error ? error.message : 'Unknown error' };
-  }
+  if (error) return { text: '', error };
+  return { text: data?.text ?? '', usage: data?.usage };
 }

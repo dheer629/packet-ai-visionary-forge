@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Key, Info, Check, X, RefreshCw } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { modelProviders, ModelProvider, fetchAvailableModels, ModelOption } from '../services/modelProviders';
+import { modelProviders, fetchAvailableModels, validateProvider, ModelOption } from '../services/modelProviders';
 
 interface ApiKey {
   id: string;
@@ -68,53 +68,57 @@ const ApiKeySettings = () => {
     }
   }, []);
 
-  const testApiConnection = async () => {
-    if (!selectedProvider || !newKeyValue) {
+  const currentProvider = modelProviders.find(p => p.id === selectedProvider);
+  const keyRequired = !currentProvider?.builtIn;
+
+  /** Validates the key server-side and returns the live model list. */
+  const testApiConnection = async (): Promise<ModelOption[] | null> => {
+    if (!selectedProvider || (keyRequired && !newKeyValue.trim())) {
       toast({
         title: "Missing Information",
         description: "Please select a provider and enter an API key",
         variant: "destructive"
       });
-      return false;
+      return null;
     }
 
     setTestingConnection(true);
-    
+
     try {
       const provider = modelProviders.find(p => p.id === selectedProvider);
       if (!provider) throw new Error("Provider not found");
-      
-      const isValid = await provider.testConnection(newKeyValue);
-      
-      if (isValid) {
+
+      const result = await validateProvider(selectedProvider, newKeyValue.trim());
+
+      if (result.ok) {
         toast({
           title: "Connection Successful",
-          description: `Successfully connected to ${provider.name} API`,
+          description: `${provider.name}: ${result.models.length} model${result.models.length === 1 ? '' : 's'} available`,
         });
-      } else {
-        toast({
-          title: "Connection Failed",
-          description: `Could not validate the ${provider.name} API key`,
-          variant: "destructive"
-        });
+        return result.models;
       }
-      
-      return isValid;
+
+      toast({
+        title: "Connection Failed",
+        description: result.error || `Could not validate the ${provider.name} API key`,
+        variant: "destructive"
+      });
+      return null;
     } catch (error) {
       console.error("API connection test error:", error);
       toast({
         title: "Connection Error",
-        description: `An error occurred while testing the connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        description: error instanceof Error ? error.message : 'Unknown error',
         variant: "destructive"
       });
-      return false;
+      return null;
     } finally {
       setTestingConnection(false);
     }
   };
 
   const addApiKey = async () => {
-    if (!selectedProvider || !newKeyValue.trim()) {
+    if (!selectedProvider || (keyRequired && !newKeyValue.trim())) {
       toast({
         title: "Error",
         description: "Service provider and API key are required",
@@ -122,78 +126,56 @@ const ApiKeySettings = () => {
       });
       return;
     }
-    
+
     const provider = modelProviders.find(p => p.id === selectedProvider);
     if (!provider) return;
-    
-    // Test connection before adding
-    const isValid = await testApiConnection();
-    if (!isValid) return;
-    
-    // Check if key with this provider already exists
+
+    // Validate server-side before saving; reuse the model list it returned.
+    const models = await testApiConnection();
+    if (!models) return;
+
+    const defaultModel = models.find(m => m.available)?.id;
     const existingKey = apiKeys.find(key => key.providerId === selectedProvider);
+
     if (existingKey) {
-      // Update the existing key
-      const updatedKeys = apiKeys.map(key => {
-        if (key.providerId === selectedProvider) {
-          return {
-            ...key,
-            value: newKeyValue,
-            lastUsed: undefined
-          };
-        }
-        return key;
-      });
-      
-      setApiKeys(updatedKeys);
-      
+      setApiKeys(apiKeys.map(key =>
+        key.providerId === selectedProvider
+          ? {
+              ...key,
+              value: newKeyValue.trim(),
+              models,
+              selectedModel: models.some(m => m.id === key.selectedModel) ? key.selectedModel : defaultModel,
+              lastUsed: undefined,
+            }
+          : key
+      ));
+      setAvailableModels({ ...availableModels, [existingKey.id]: models });
+
       toast({
         title: "API Key Updated",
-        description: `${provider.name} API key has been updated.`
+        description: `${provider.name} key updated — ${models.length} models available.`
       });
-      
-      // Refresh models for this key
-      refreshModels(existingKey.id);
     } else {
-      // Add new key
       const newKeyId = Date.now().toString();
-      
-      setIsFetchingModels(prev => ({...prev, [newKeyId]: true}));
-      
-      try {
-        // Fetch available models
-        const models = await fetchAvailableModels(selectedProvider, newKeyValue);
-        const defaultModel = models.find(m => m.available)?.id;
-        
-        const newKey: ApiKey = {
-          id: newKeyId,
-          providerId: selectedProvider,
-          name: provider.name,
-          value: newKeyValue,
-          models: models,
-          selectedModel: defaultModel,
-          lastUsed: undefined
-        };
-        
-        setApiKeys([...apiKeys, newKey]);
-        setAvailableModels({...availableModels, [newKey.id]: models});
-        
-        toast({
-          title: "API Key Added",
-          description: `${provider.name} API key has been added successfully.`
-        });
-      } catch (error) {
-        console.error('Error fetching models:', error);
-        toast({
-          title: "Warning",
-          description: "API key added but failed to fetch available models.",
-          variant: "destructive"
-        });
-      } finally {
-        setIsFetchingModels(prev => ({...prev, [newKeyId]: false}));
-      }
+      const newKey: ApiKey = {
+        id: newKeyId,
+        providerId: selectedProvider,
+        name: provider.name,
+        value: newKeyValue.trim(),
+        models,
+        selectedModel: defaultModel,
+        lastUsed: undefined
+      };
+
+      setApiKeys([...apiKeys, newKey]);
+      setAvailableModels({ ...availableModels, [newKeyId]: models });
+
+      toast({
+        title: provider.builtIn ? "Provider Connected" : "API Key Added",
+        description: `${provider.name} connected — ${models.length} models available.`
+      });
     }
-    
+
     setNewKeyValue('');
   };
   
@@ -288,7 +270,9 @@ const ApiKeySettings = () => {
                 <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                 <p className="text-blue-700">
                   Connect to AI services by adding API keys for various providers. The system will automatically detect available models for each provider.
-                  API keys are stored in your browser's local storage and are never sent to our servers.
+                  Keys are stored in this browser's local storage. Each request relays your key
+                  through this app's own server function to the provider — providers reject direct
+                  browser calls — where it is used once and never logged or saved.
                 </p>
               </div>
               
@@ -309,38 +293,56 @@ const ApiKeySettings = () => {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      {modelProviders.find(p => p.id === selectedProvider)?.description || ''}
+                      {currentProvider?.description || ''}
+                      {currentProvider?.keyUrl && (
+                        <>
+                          {' '}
+                          <a
+                            href={currentProvider.keyUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="underline underline-offset-2"
+                          >
+                            Get a key
+                          </a>
+                        </>
+                      )}
                     </p>
                   </div>
-                  
+
                   <div className="col-span-8 space-y-2">
-                    <Label htmlFor="api-key-value">API Key</Label>
+                    <Label htmlFor="api-key-value">
+                      {keyRequired ? 'API Key' : 'API Key (not required)'}
+                    </Label>
                     <div className="flex gap-2">
-                      <Input 
-                        id="api-key-value" 
-                        value={newKeyValue} 
-                        onChange={(e) => setNewKeyValue(e.target.value)} 
+                      <Input
+                        id="api-key-value"
+                        value={newKeyValue}
+                        onChange={(e) => setNewKeyValue(e.target.value)}
                         type="password"
-                        placeholder="Enter API key"
+                        placeholder={keyRequired ? 'Enter API key' : 'No key needed for built-in models'}
+                        disabled={!keyRequired}
                         className="flex-grow"
                       />
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={testApiConnection}
-                        disabled={testingConnection || !newKeyValue}
+                        disabled={testingConnection || (keyRequired && !newKeyValue.trim())}
                       >
                         {testingConnection ? 'Testing...' : 'Test'}
                       </Button>
                     </div>
                   </div>
                 </div>
-                
-                <Button 
+
+                <Button
                   onClick={addApiKey}
                   className="w-full"
-                  disabled={testingConnection || !selectedProvider || !newKeyValue}
+                  disabled={testingConnection || !selectedProvider || (keyRequired && !newKeyValue.trim())}
                 >
-                  {apiKeys.some(key => key.providerId === selectedProvider) ? 'Update API Key' : 'Add API Key'}
+                  {apiKeys.some(key => key.providerId === selectedProvider)
+                    ? 'Update Connection'
+                    : keyRequired ? 'Add API Key' : 'Connect Built-in AI'}
                 </Button>
               </div>
               
