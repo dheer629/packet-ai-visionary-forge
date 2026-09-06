@@ -243,7 +243,12 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
         </TabsContent>
         
         <TabsContent value="packets" className="mt-4">
-          <EnhancedPacketList packets={safeData.packets} />
+          <EnhancedPacketList
+            packets={safeData.packets}
+            filename={safeData.filename}
+            captureSize={safeData.size}
+            summary={safeData.summary}
+          />
         </TabsContent>
         
         <TabsContent value="conversations" className="mt-4">
