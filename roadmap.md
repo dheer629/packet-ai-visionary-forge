@@ -23,5 +23,9 @@
 - [x] Removed the 10,000-packet display cap; packet count matches the capture.
 - [x] Headers tab shows only captured values ("Unavailable" when a field is absent).
 - [x] PacketDetails shows real decoded layers with byte offsets; fabricated placeholder values removed.
+- [x] Decode progress bar with pause / resume / cancel for large captures (`decodeControl.ts`, cooperative gate in both parsers).
+- [x] Progress now tracks real file offset instead of a fixed packet estimate.
+- [x] Packets carry their link type; JSON export of decoded summaries with byte offsets and layer fields (`exportPackets.ts`).
+- [x] Protocol + link-type facet filters in the packet list (counts from decoded packets only).
 - [ ] Optional: per-field byte highlighting in the hex view.
 
