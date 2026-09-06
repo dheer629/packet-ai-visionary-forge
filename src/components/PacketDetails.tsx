@@ -9,6 +9,27 @@ interface PacketDetailsProps {
   onClose: () => void;
 }
 
+type FieldValue = string | number | undefined | null;
+
+/** Renders only values that were actually decoded from the captured bytes. */
+const HeaderBlock: React.FC<{ title: string; rows: [string, FieldValue][] }> = ({ title, rows }) => (
+  <div>
+    <h4 className="text-sm font-medium text-cyber-accent">{title}</h4>
+    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
+      {rows.map(([label, value]) => (
+        <React.Fragment key={label}>
+          <p>{label}:</p>
+          {value === undefined || value === null || value === '' ? (
+            <p className="font-mono text-cyber-foreground/40">Unavailable</p>
+          ) : (
+            <p className="font-mono break-all">{String(value)}</p>
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  </div>
+);
+
 const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
   if (!packet) return null;
 
