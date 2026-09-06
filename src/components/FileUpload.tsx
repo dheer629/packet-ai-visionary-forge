@@ -1,17 +1,20 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { useFileProcessor } from '../hooks/useFileProcessor';
 import FileUploadBox from './FileUploadBox';
 
 const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => {
-  const { 
-    isUploading, 
-    fileName, 
-    processingProgress, 
-    dataFormat, 
+  const {
+    isUploading,
+    isPaused,
+    fileName,
+    processingProgress,
+    dataFormat,
     aiEnrichment,
-    processFile 
+    processFile,
+    pauseDecode,
+    resumeDecode,
+    cancelDecode,
   } = useFileProcessor(onFileUpload);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -24,23 +27,27 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
   return (
     <div className="cyber-box mb-6">
       <h2 className="text-lg font-medium mb-4 cyber-text">Upload PCAP File</h2>
-      
-      <FileUploadBox 
+
+      <FileUploadBox
         isUploading={isUploading}
+        isPaused={isPaused}
         fileName={fileName}
         processingProgress={processingProgress}
         dataFormat={dataFormat}
         aiEnrichment={aiEnrichment}
         onFileChange={handleFileChange}
+        onPause={pauseDecode}
+        onResume={resumeDecode}
+        onCancel={cancelDecode}
       />
-      
+
       <div className="mt-4 flex justify-end">
-        <Button 
-          disabled={isUploading || !fileName} 
+        <Button
+          disabled={isUploading || !fileName}
           className="bg-cyber-primary text-cyber-foreground hover:bg-cyber-primary/80"
           onClick={() => document.getElementById('pcap-upload')?.click()}
         >
-          {isUploading ? `Processing (${processingProgress}%)` : "Analyze PCAP"}
+          {isUploading ? `Processing (${processingProgress}%)` : 'Analyze PCAP'}
         </Button>
       </div>
     </div>
