@@ -1,5 +1,5 @@
 import { decodePacketBytes } from './decoders/deepDecoder';
-import { DecodeController } from './decodeControl';
+import { DecodeController, isDecodeCancelled } from './decodeControl';
 import { linkTypeName } from './linkTypes';
 
 /**
@@ -282,6 +282,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
           if (control) await control.gate();
         }
       } catch (error) {
+        if (isDecodeCancelled(error)) throw error;
         console.error(`Error parsing packet at offset ${offset}:`, error);
         // Try to recover and move to the next 16-byte boundary
         offset = (Math.floor(offset / 16) + 1) * 16;
@@ -405,6 +406,7 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
   let minTimestamp = Number.MAX_VALUE;
   let maxTimestamp = 0;
   let interfaceDescriptions: any[] = [];
+  let pendingGate = false;
   
   // Block Type values
   const SHB_TYPE = 0x0a0d0d0a; // Section Header Block
@@ -575,8 +577,14 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
       
       // Move to next block
       offset += blockTotalLength;
+
+      if (pendingGate) {
+        pendingGate = false;
+        if (control) await control.gate();
+      }
     }
   } catch (error) {
+    if (isDecodeCancelled(error)) throw error;
     console.error(`Error parsing PCAP-NG format:`, error);
     // Continue with whatever packets we managed to parse
   }
