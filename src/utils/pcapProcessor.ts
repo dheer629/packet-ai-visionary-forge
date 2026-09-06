@@ -1,4 +1,6 @@
 import { decodePacketBytes } from './decoders/deepDecoder';
+import { DecodeController } from './decodeControl';
+import { linkTypeName } from './linkTypes';
 
 /**
  * Decode one captured frame with the byte-level decoder and map the result onto
@@ -25,6 +27,8 @@ function applyDecodedFrame(
   packetDetails.protocolStack = decoded.stack;
   packetDetails.decodedLayers = decoded.layers;
   packetDetails.truncated = decoded.truncated;
+  packetDetails.linkType = linkType;
+  packetDetails.linkTypeName = linkTypeName(linkType);
 
   for (const layer of decoded.layers) {
     const f: any = layer.fields;
@@ -97,7 +101,7 @@ function applyDecodedFrame(
 /**
  * Process a PCAP file and extract network data in a browser environment
  */
-export const processPcapFile = async (file: File, progressCallback?: (progress: number) => void): Promise<any> => {
+export const processPcapFile = async (file: File, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -115,7 +119,7 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
         
         // Process the PCAP data
         progressCallback?.(0.3);
-        const analysisData = await parseActualPcapData(file.name, buffer, progressCallback);
+        const analysisData = await parseActualPcapData(file.name, buffer, progressCallback, control);
         
         // Complete processing
         progressCallback?.(1.0);
@@ -139,7 +143,7 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
 /**
  * Parse actual PCAP binary data in the browser
  */
-const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void): Promise<any> => {
+const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
   // Create a DataView to read binary data
   const dataView = new DataView(buffer);
   const fileSize = buffer.byteLength;
@@ -165,7 +169,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     console.log(`Processing ${isPcapNg ? 'PCAPNG' : 'PCAP'} file: ${filename}, size: ${fileSize} bytes, endianness: ${isLittleEndian ? 'little' : (isBigEndian ? 'big' : 'N/A')}`);
     
     if (isPcapNg) {
-      return parsePcapNgFormat(dataView, fileSize, filename, progressCallback);
+      return await parsePcapNgFormat(dataView, fileSize, filename, progressCallback, control);
     }
     
     // Parse standard PCAP format
@@ -274,8 +278,8 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
       
         // Log progress occasionally
         if (packetCount % 1000 === 0) {
-          console.log(`Processed ${packetCount} packets...`);
-          progressCallback?.(0.3 + (0.7 * Math.min(packetCount / 50000, 1))); // Update progress
+          progressCallback?.(0.3 + 0.7 * Math.min(offset / Math.max(fileSize, 1), 1));
+          if (control) await control.gate();
         }
       } catch (error) {
         console.error(`Error parsing packet at offset ${offset}:`, error);
@@ -389,7 +393,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
  * Parse PCAP-NG format files
  * This is a simplified implementation as PCAP-NG is much more complex
  */
-const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void): any => {
+const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
   console.log('Detected PCAP-NG format, processing block structure');
   
   // PCAP-NG variables
@@ -520,10 +524,8 @@ const parsePcapNgFormat = (dataView: DataView, fileSize: number, filename: strin
               
               // Log progress occasionally
               if (packetCount % 1000 === 0) {
-                console.log(`Processed ${packetCount} PCAP-NG packets...`);
-                if (progressCallback) {
-                  progressCallback(0.3 + (0.7 * Math.min(packetCount / 50000, 1)));
-                }
+                progressCallback?.(0.3 + 0.7 * Math.min(offset / Math.max(fileSize, 1), 1));
+                pendingGate = true;
               }
             } catch (e) {
               console.warn(`Error parsing EPB at offset ${offset}:`, e);
