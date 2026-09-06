@@ -385,6 +385,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
       }
     };
   } catch (error) {
+    if (isDecodeCancelled(error)) throw error;
     console.error('Error parsing PCAP data:', error);
     throw new Error(`Failed to parse PCAP file: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
