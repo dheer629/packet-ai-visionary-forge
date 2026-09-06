@@ -4,14 +4,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Filter } from 'lucide-react';
+import { Search, Filter, Download } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
+import { downloadPacketExport } from '@/utils/exportPackets';
+import { linkTypeName } from '@/utils/linkTypes';
+import { useToast } from '@/components/ui/use-toast';
 
 interface EnhancedPacketListProps {
   packets: any[];
+  filename?: string;
+  captureSize?: number;
+  summary?: Record<string, unknown>;
 }
 
-const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] }) => {
+const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], filename, captureSize, summary }) => {
+  const { toast } = useToast();
+  const [selectedProtocols, setSelectedProtocols] = useState<string[]>([]);
+  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>([]);
   const [filter, setFilter] = useState('');
   const [selectedPacket, setSelectedPacket] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -168,6 +178,29 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
     });
   }, [packets]);
   
+  // Detected protocol / link-type facets, straight from the decoded packets
+  const protocolFacets = useMemo(() => {
+    const counts = new Map<string, number>();
+    safePackets.forEach((p) => {
+      const proto = String(p?.protocol || 'Unknown');
+      counts.set(proto, (counts.get(proto) || 0) + 1);
+    });
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [safePackets]);
+
+  const linkTypeFacets = useMemo(() => {
+    const counts = new Map<string, number>();
+    safePackets.forEach((p) => {
+      if (p?.linkType === undefined || p?.linkType === null) return;
+      const name = p.linkTypeName || linkTypeName(Number(p.linkType));
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [safePackets]);
+
+  const toggleValue = (list: string[], value: string) =>
+    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
     if (!safePackets || safePackets.length === 0) {
@@ -192,6 +225,19 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
         return false;
       }
       
+      // Quick protocol facet filter
+      if (selectedProtocols.length > 0 && !selectedProtocols.includes(String(packet.protocol || 'Unknown'))) {
+        return false;
+      }
+
+      // Link-type facet filter
+      if (selectedLinkTypes.length > 0) {
+        const name = packet.linkTypeName || (packet.linkType !== undefined && packet.linkType !== null
+          ? linkTypeName(Number(packet.linkType))
+          : null);
+        if (!name || !selectedLinkTypes.includes(name)) return false;
+      }
+
       // Protocol filter
       if (filterOptions.protocol && 
           !String(packet.protocol || '').toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
@@ -236,7 +282,19 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
       
       return true;
     });
-  }, [safePackets, filter, filterOptions]);
+  }, [safePackets, filter, filterOptions, selectedProtocols, selectedLinkTypes]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filter, filterOptions, selectedProtocols, selectedLinkTypes]);
+
+  const handleExport = () => {
+    const count = downloadPacketExport(filteredPackets, { filename, size: captureSize, summary });
+    toast({
+      title: 'Export ready',
+      description: `Downloaded ${count} decoded packet summaries as JSON.`,
+    });
+  };
 
   // Get paginated packets to display
   const displayedPackets = useMemo(() => {
@@ -288,15 +346,27 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
           <h3 className="text-sm font-medium cyber-text">
             Packet Capture ({maxPackets} total packets)
           </h3>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="text-xs"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="h-3 w-3 mr-1" />
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={handleExport}
+              disabled={filteredPackets.length === 0}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Export JSON
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-3 w-3 mr-1" />
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </Button>
+          </div>
         </div>
         
         <div className="relative">
@@ -310,6 +380,52 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [] })
         </div>
       </div>
       
+      {(protocolFacets.length > 0 || linkTypeFacets.length > 0) && (
+        <div className="mb-4 space-y-2">
+          {protocolFacets.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-cyber-foreground/60 mr-1">Protocol:</span>
+              {protocolFacets.map(([proto, count]) => (
+                <Badge
+                  key={proto}
+                  variant={selectedProtocols.includes(proto) ? 'default' : 'outline'}
+                  className="cursor-pointer text-[11px] font-mono"
+                  onClick={() => setSelectedProtocols((prev) => toggleValue(prev, proto))}
+                >
+                  {proto} <span className="ml-1 opacity-70">{count}</span>
+                </Badge>
+              ))}
+              {selectedProtocols.length > 0 && (
+                <Button variant="ghost" size="sm" className="h-6 text-[11px]" onClick={() => setSelectedProtocols([])}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          )}
+
+          {linkTypeFacets.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-cyber-foreground/60 mr-1">Link type:</span>
+              {linkTypeFacets.map(([name, count]) => (
+                <Badge
+                  key={name}
+                  variant={selectedLinkTypes.includes(name) ? 'default' : 'outline'}
+                  className="cursor-pointer text-[11px] font-mono"
+                  onClick={() => setSelectedLinkTypes((prev) => toggleValue(prev, name))}
+                >
+                  {name} <span className="ml-1 opacity-70">{count}</span>
+                </Badge>
+              ))}
+              {selectedLinkTypes.length > 0 && (
+                <Button variant="ghost" size="sm" className="h-6 text-[11px]" onClick={() => setSelectedLinkTypes([])}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {showFilters && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
           <Input
