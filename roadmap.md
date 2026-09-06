@@ -13,14 +13,15 @@
 - [x] `aiEnhancement.ts`: falls back to built-in AI when no key is configured.
 
 ## In progress
-- [ ] Verify the proxy end to end (built-in chat + an invalid-key error path).
-- [ ] Surface provider/model status and real error text in `ApiKeySettings.tsx`.
+- [x] Verified the proxy end to end (built-in chat + invalid-key error path).
+- [x] Provider/model status and real vendor error text surfaced in `ApiKeySettings.tsx`.
 
 ## Decoder coverage
 - [x] Decoder capability registry (Available / Partial / Unavailable) + "Decoders" tab.
 - [x] Deep byte-level decoder (`src/utils/decoders/deepDecoder.ts`): link types, VLAN/QinQ/MPLS/PPPoE/GRE/VXLAN/GENEVE, IPv4/IPv6/frags, TCP/UDP/SCTP/ICMP/IGMP/ARP, DNS/DHCP/HTTP/TLS/NTP/SNMP/SIP/RTP/RADIUS/MQTT/CoAP/Modbus, GTP-U/GTPv2-C/PFCP/Diameter.
 - [x] Both PCAP and PCAP-NG parsers now route every frame through the deep decoder.
 - [x] Removed the 10,000-packet display cap; packet count matches the capture.
+- [x] Headers tab shows only captured values ("Unavailable" when a field is absent).
 - [x] PacketDetails shows real decoded layers with byte offsets; fabricated placeholder values removed.
 - [ ] Optional: per-field byte highlighting in the hex view.
 

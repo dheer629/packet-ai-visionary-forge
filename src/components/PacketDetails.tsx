@@ -9,6 +9,27 @@ interface PacketDetailsProps {
   onClose: () => void;
 }
 
+type FieldValue = string | number | undefined | null;
+
+/** Renders only values that were actually decoded from the captured bytes. */
+const HeaderBlock: React.FC<{ title: string; rows: [string, FieldValue][] }> = ({ title, rows }) => (
+  <div>
+    <h4 className="text-sm font-medium text-cyber-accent">{title}</h4>
+    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
+      {rows.map(([label, value]) => (
+        <React.Fragment key={label}>
+          <p>{label}:</p>
+          {value === undefined || value === null || value === '' ? (
+            <p className="font-mono text-cyber-foreground/40">Unavailable</p>
+          ) : (
+            <p className="font-mono break-all">{String(value)}</p>
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  </div>
+);
+
 const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
   if (!packet) return null;
 
@@ -72,156 +93,128 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
           <ScrollArea className="h-60">
             <div className="space-y-3">
               {packet.ethernet && (
-                <div>
-                  <h4 className="text-sm font-medium text-cyber-accent">Ethernet Header</h4>
-                  <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                    <p>Destination MAC:</p>
-                    <p className="font-mono">{packet.ethernet?.destMac || "00:1A:2B:3C:4D:5E"}</p>
-                    <p>Source MAC:</p>
-                    <p className="font-mono">{packet.ethernet?.srcMac || "AA:BB:CC:DD:EE:FF"}</p>
-                    <p>Type:</p>
-                    <p className="font-mono">{packet.ethernet?.type || "0x0800 (IPv4)"}</p>
-                  </div>
-                </div>
+                <HeaderBlock
+                  title="Ethernet Header"
+                  rows={[
+                    ['Destination MAC', packet.ethernet.destMac],
+                    ['Source MAC', packet.ethernet.srcMac],
+                    ['Type', packet.ethernet.type],
+                  ]}
+                />
               )}
-              
+
               {packet.vlan && (
                 <>
                   <Separator className="bg-cyber-border" />
-                  <div>
-                    <h4 className="text-sm font-medium text-cyber-accent">802.1Q VLAN Header</h4>
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                      <p>VLAN ID:</p>
-                      <p className="font-mono">{packet.vlan?.id || "0"}</p>
-                      <p>Priority:</p>
-                      <p className="font-mono">{packet.vlan?.priority || "0"}</p>
-                    </div>
-                  </div>
+                  <HeaderBlock
+                    title="802.1Q VLAN Header"
+                    rows={[
+                      ['VLAN ID', packet.vlan.id],
+                      ['Priority', packet.vlan.priority],
+                    ]}
+                  />
                 </>
               )}
-              
+
               {packet.ip && (
                 <>
                   <Separator className="bg-cyber-border" />
-                  <div>
-                    <h4 className="text-sm font-medium text-cyber-accent">IP Header</h4>
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                      <p>Version:</p>
-                      <p className="font-mono">{packet.ip?.version || "4"}</p>
-                      <p>Header Length:</p>
-                      <p className="font-mono">{packet.ip?.headerLength || "20 bytes"}</p>
-                      <p>TTL:</p>
-                      <p className="font-mono">{packet.ip?.ttl || "64"}</p>
-                      <p>Protocol:</p>
-                      <p className="font-mono">{packet.ip?.protocol || "TCP (6)"}</p>
-                      <p>Source:</p>
-                      <p className="font-mono">{packet.ip?.source || packet.source}</p>
-                      <p>Destination:</p>
-                      <p className="font-mono">{packet.ip?.destination || packet.destination}</p>
-                    </div>
-                  </div>
+                  <HeaderBlock
+                    title="IP Header"
+                    rows={[
+                      ['Version', packet.ip.version],
+                      ['Header Length', packet.ip.headerLength],
+                      ['TTL', packet.ip.ttl],
+                      ['Protocol', packet.ip.protocol],
+                      ['Source', packet.ip.source],
+                      ['Destination', packet.ip.destination],
+                    ]}
+                  />
                 </>
               )}
 
               {packet.ipv6 && (
                 <>
                   <Separator className="bg-cyber-border" />
-                  <div>
-                    <h4 className="text-sm font-medium text-cyber-accent">IPv6 Header</h4>
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                      <p>Version:</p>
-                      <p className="font-mono">{packet.ipv6?.version || "6"}</p>
-                      <p>Flow Label:</p>
-                      <p className="font-mono">{packet.ipv6?.flowLabel || "0"}</p>
-                      <p>Hop Limit:</p>
-                      <p className="font-mono">{packet.ipv6?.hopLimit || "64"}</p>
-                      <p>Next Header:</p>
-                      <p className="font-mono">{packet.ipv6?.nextHeader || "6"}</p>
-                      <p>Source:</p>
-                      <p className="font-mono">{packet.ipv6?.source || packet.source}</p>
-                      <p>Destination:</p>
-                      <p className="font-mono">{packet.ipv6?.destination || packet.destination}</p>
-                    </div>
-                  </div>
+                  <HeaderBlock
+                    title="IPv6 Header"
+                    rows={[
+                      ['Version', packet.ipv6.version],
+                      ['Flow Label', packet.ipv6.flowLabel],
+                      ['Hop Limit', packet.ipv6.hopLimit],
+                      ['Next Header', packet.ipv6.nextHeader],
+                      ['Source', packet.ipv6.source],
+                      ['Destination', packet.ipv6.destination],
+                    ]}
+                  />
                 </>
               )}
-              
+
               {packet.tcp && (
                 <>
                   <Separator className="bg-cyber-border" />
-                  <div>
-                    <h4 className="text-sm font-medium text-cyber-accent">TCP Header</h4>
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                      <p>Source Port:</p>
-                      <p className="font-mono">{packet.tcp?.srcPort || "443"}</p>
-                      <p>Destination Port:</p>
-                      <p className="font-mono">{packet.tcp?.dstPort || "52134"}</p>
-                      <p>Sequence Number:</p>
-                      <p className="font-mono">{packet.tcp?.seq || "1234567890"}</p>
-                      <p>ACK Number:</p>
-                      <p className="font-mono">{packet.tcp?.ack || "0987654321"}</p>
-                      <p>Flags:</p>
-                      <p className="font-mono">{packet.tcp?.flags || "SYN ACK"}</p>
-                      <p>Window Size:</p>
-                      <p className="font-mono">{packet.tcp?.window || "8192"}</p>
-                    </div>
-                  </div>
+                  <HeaderBlock
+                    title="TCP Header"
+                    rows={[
+                      ['Source Port', packet.tcp.srcPort],
+                      ['Destination Port', packet.tcp.dstPort],
+                      ['Sequence Number', packet.tcp.seq],
+                      ['ACK Number', packet.tcp.ack],
+                      ['Flags', packet.tcp.flags],
+                      ['Window Size', packet.tcp.window],
+                    ]}
+                  />
                 </>
               )}
 
               {packet.udp && (
                 <>
                   <Separator className="bg-cyber-border" />
-                  <div>
-                    <h4 className="text-sm font-medium text-cyber-accent">UDP Header</h4>
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                      <p>Source Port:</p>
-                      <p className="font-mono">{packet.udp?.srcPort || "53"}</p>
-                      <p>Destination Port:</p>
-                      <p className="font-mono">{packet.udp?.dstPort || "12345"}</p>
-                      <p>Length:</p>
-                      <p className="font-mono">{packet.udp?.length || "8"} bytes</p>
-                    </div>
-                  </div>
+                  <HeaderBlock
+                    title="UDP Header"
+                    rows={[
+                      ['Source Port', packet.udp.srcPort],
+                      ['Destination Port', packet.udp.dstPort],
+                      ['Length', packet.udp.length],
+                    ]}
+                  />
                 </>
               )}
 
               {packet.icmp && (
                 <>
                   <Separator className="bg-cyber-border" />
-                  <div>
-                    <h4 className="text-sm font-medium text-cyber-accent">ICMP Header</h4>
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                      <p>Type:</p>
-                      <p className="font-mono">{packet.icmp?.type || "8"}</p>
-                      <p>Code:</p>
-                      <p className="font-mono">{packet.icmp?.code || "0"}</p>
-                      <p>Description:</p>
-                      <p className="font-mono">{packet.icmp?.typeName || "Echo Request"}</p>
-                    </div>
-                  </div>
+                  <HeaderBlock
+                    title="ICMP Header"
+                    rows={[
+                      ['Type', packet.icmp.type],
+                      ['Code', packet.icmp.code],
+                      ['Description', packet.icmp.typeName],
+                    ]}
+                  />
                 </>
               )}
 
               {packet.arp && (
                 <>
                   <Separator className="bg-cyber-border" />
-                  <div>
-                    <h4 className="text-sm font-medium text-cyber-accent">ARP Header</h4>
-                    <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
-                      <p>Operation:</p>
-                      <p className="font-mono">{packet.arp?.operation || "Request"}</p>
-                      <p>Sender MAC:</p>
-                      <p className="font-mono">{packet.arp?.senderMac || "00:00:00:00:00:00"}</p>
-                      <p>Sender IP:</p>
-                      <p className="font-mono">{packet.arp?.senderIP || "0.0.0.0"}</p>
-                      <p>Target MAC:</p>
-                      <p className="font-mono">{packet.arp?.targetMac || "00:00:00:00:00:00"}</p>
-                      <p>Target IP:</p>
-                      <p className="font-mono">{packet.arp?.targetIP || "0.0.0.0"}</p>
-                    </div>
-                  </div>
+                  <HeaderBlock
+                    title="ARP Header"
+                    rows={[
+                      ['Operation', packet.arp.operation],
+                      ['Sender MAC', packet.arp.senderMac],
+                      ['Sender IP', packet.arp.senderIP],
+                      ['Target MAC', packet.arp.targetMac],
+                      ['Target IP', packet.arp.targetIP],
+                    ]}
+                  />
                 </>
+              )}
+
+              {!packet.ethernet && !packet.ip && !packet.ipv6 && !packet.tcp && !packet.udp && !packet.icmp && !packet.arp && (
+                <p className="text-xs text-cyber-foreground/70">
+                  No header fields were decoded from the captured bytes of this packet.
+                </p>
               )}
             </div>
           </ScrollArea>
