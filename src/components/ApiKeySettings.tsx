@@ -429,12 +429,36 @@ const ApiKeySettings = () => {
               </div>
             </div>
           </ScrollArea>
-          
+  );
+
+  if (inline) {
+    return (
+      <div className="rounded-lg border border-cyber-border bg-white p-4 shadow-sm">{body}</div>
+    );
+  }
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2"
+      >
+        <Key className="h-4 w-4" />
+        API Keys
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>AI Provider API Keys</DialogTitle>
+          </DialogHeader>
+
+          {body}
+
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setOpen(false)}>
               Close
             </Button>
           </DialogFooter>
@@ -442,6 +466,7 @@ const ApiKeySettings = () => {
       </Dialog>
     </>
   );
+
 };
 
 export default ApiKeySettings;
