@@ -224,8 +224,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
   }, [safePackets]);
 
   // Auto-detected trace profile (what kind of capture this is) plus the
-  // ready-to-use filters that suit it.
-  const profile = useMemo(() => detectTraceProfile(safePackets), [safePackets]);
+  // ready-to-use filters that suit it. A user override wins over detection.
+  const detectedProfile = useMemo(() => detectTraceProfile(safePackets), [safePackets]);
+  const profileOptions = useMemo(() => listTraceProfiles(safePackets), [safePackets]);
+  const profile = useMemo(
+    () => (profileOverride ? getTraceProfileByName(safePackets, profileOverride) : detectedProfile),
+    [profileOverride, safePackets, detectedProfile],
+  );
+
 
   /** Every protocol name present in the capture, including tunnelled layers. */
   const allProtocolNames = useMemo(() => {
