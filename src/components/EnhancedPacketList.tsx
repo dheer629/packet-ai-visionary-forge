@@ -33,12 +33,22 @@ interface EnhancedPacketListProps {
 }
 
 
-const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], filename, captureSize, summary }) => {
+const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
+  packets = [],
+  filename,
+  captureSize,
+  summary,
+  viewState,
+  onViewStateChange,
+}) => {
   const { toast } = useToast();
-  const [selectedProtocols, setSelectedProtocols] = useState<string[]>([]);
-  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>([]);
-  const [filter, setFilter] = useState('');
+  const [selectedProtocols, setSelectedProtocols] = useState<string[]>(viewState?.selectedProtocols ?? []);
+  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>(viewState?.selectedLinkTypes ?? []);
+  const [filter, setFilter] = useState(viewState?.search ?? '');
+  const [profileOverride, setProfileOverride] = useState<string | null>(viewState?.profileOverride ?? null);
+  const [appliedFilterId, setAppliedFilterId] = useState<string | null>(viewState?.appliedFilterId ?? null);
   const [selectedPacket, setSelectedPacket] = useState<any>(null);
+
   const [showFilters, setShowFilters] = useState(false);
   const [filterOptions, setFilterOptions] = useState({
     protocol: '',
