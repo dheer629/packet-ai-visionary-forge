@@ -329,7 +329,7 @@ const builtInAdapter: Adapter = {
       body: JSON.stringify(body),
     });
     if (res.status === 429) throw new Error("Rate limit reached on built-in AI. Please retry shortly.");
-    if (res.status === 402) throw new Error("Built-in AI credits are exhausted. Add credits in Lovable.");
+    if (res.status === 402) throw new Error("Built-in AI credits are exhausted. Please add credits to continue.");
     if (!res.ok) throw new Error(await readError(res));
     const data = await res.json();
     return {

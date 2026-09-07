@@ -3,6 +3,19 @@ import { DecodeController, isDecodeCancelled } from './decodeControl';
 import { linkTypeName } from './linkTypes';
 
 /**
+ * Convert a capture timestamp (seconds since epoch) into an ISO string.
+ * Captures can carry missing, zero, or out-of-range timestamps; those must not
+ * crash the whole parse with "Invalid time value".
+ */
+function safeIsoTime(seconds: number): string | null {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const ms = seconds * 1000;
+  if (ms > 8.64e15 || ms < -8.64e15) return null;
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
  * Decode one captured frame with the byte-level decoder and map the result onto
  * the packet object plus the capture-wide statistics. Only captured bytes are
  * used — nothing is inferred or invented.
@@ -421,7 +434,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     }));
     
     // Generate time series data for visualization
-    const duration = maxTimestamp - minTimestamp;
+    const duration = Number.isFinite(maxTimestamp - minTimestamp) && maxTimestamp > minTimestamp ? maxTimestamp - minTimestamp : 0;
     const timeSeriesData = generateTimeSeriesData(packets, duration);
     
     // Format conversations with duration
@@ -470,8 +483,8 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         minPacketSize: packetSizes[0] || 0,
         maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
         captureDuration: formatDuration(duration),
-        startTime: new Date(minTimestamp * 1000).toISOString(),
-        endTime: new Date(maxTimestamp * 1000).toISOString(),
+        startTime: safeIsoTime(minTimestamp),
+        endTime: safeIsoTime(maxTimestamp),
         packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
         topIPs,
         protocolCounts: Object.entries(protocolCounts)
@@ -751,7 +764,7 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
   }
   
   // Generate time series data
-  const duration = maxTimestamp - minTimestamp;
+  const duration = Number.isFinite(maxTimestamp - minTimestamp) && maxTimestamp > minTimestamp ? maxTimestamp - minTimestamp : 0;
   const timeSeriesData = generateTimeSeriesData(packets, duration);
   
   // Get top IPs by packet count
@@ -793,8 +806,8 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
       minPacketSize: packetSizes[0] || 0,
       maxPacketSize: packetSizes[packetSizes.length - 1] || 0,
       captureDuration: formatDuration(duration),
-      startTime: new Date(minTimestamp * 1000).toISOString(),
-      endTime: new Date(maxTimestamp * 1000).toISOString(),
+      startTime: safeIsoTime(minTimestamp),
+      endTime: safeIsoTime(maxTimestamp),
       packetsPerSecond: (packetCount / Math.max(duration, 0.001)).toFixed(1),
       topIPs,
       protocolCounts: Object.entries(protocolCounts)
