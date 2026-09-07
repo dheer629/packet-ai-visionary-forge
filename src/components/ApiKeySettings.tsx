@@ -246,25 +246,9 @@ const ApiKeySettings = () => {
     return key.substring(0, 4) + '•'.repeat(key.length - 8) + key.substring(key.length - 4);
   };
   
-  return (
-    <>
-      <Button 
-        variant="outline" 
-        size="sm" 
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2"
-      >
-        <Key className="h-4 w-4" />
-        API Keys
-      </Button>
-      
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle>AI Provider API Keys</DialogTitle>
-          </DialogHeader>
-          
+  const body = (
           <ScrollArea className="max-h-[70vh]">
+
             <div className="py-4 space-y-4">
               <div className="bg-blue-50 p-3 rounded-md text-sm flex items-start gap-2">
                 <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
