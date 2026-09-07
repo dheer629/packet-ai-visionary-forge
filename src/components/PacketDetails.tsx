@@ -18,14 +18,14 @@ const HeaderBlock: React.FC<{ title: string; rows: [string, FieldValue][] }> = (
     <h4 className="text-sm font-medium text-cyber-accent">{title}</h4>
     <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
       {rows.map(([label, value]) => (
-        <React.Fragment key={label}>
+        <div key={label} className="contents">
           <p>{label}:</p>
           {value === undefined || value === null || value === '' ? (
             <p className="font-mono text-cyber-foreground/40">Unavailable</p>
           ) : (
             <p className="font-mono break-all">{String(value)}</p>
           )}
-        </React.Fragment>
+        </div>
       ))}
     </div>
   </div>
@@ -237,10 +237,10 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                       {Object.entries(layer.fields || {}).map(([k, v]) => (
-                        <React.Fragment key={k}>
+                        <div key={k} className="contents">
                           <p className="text-cyber-foreground/70">{k}</p>
                           <p className="font-mono break-all">{String(v)}</p>
-                        </React.Fragment>
+                        </div>
                       ))}
                     </div>
                   </div>
