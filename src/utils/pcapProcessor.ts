@@ -700,6 +700,15 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
 
       if (pendingGate) {
         pendingGate = false;
+        if (options?.checkpoint) {
+          await options.checkpoint.save({
+            offset,
+            packetCount,
+            newPackets: packets.slice(lastCheckpointedCount),
+            interfaces: interfaceDescriptions,
+          });
+          lastCheckpointedCount = packets.length;
+        }
         if (control) await control.gate();
       }
     }
@@ -709,7 +718,11 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
     // Continue with whatever packets we managed to parse
   }
   
+  // Decode finished: the checkpoint is no longer needed.
+  await options?.checkpoint?.clear?.();
+
   console.log(`Finished processing ${packetCount} PCAP-NG packets across ${interfaceDescriptions.length} interfaces`);
+
   
   // Calculate statistics (similar to parseActualPcapData)
   const avgPacketSize = packetSizes.length > 0 
