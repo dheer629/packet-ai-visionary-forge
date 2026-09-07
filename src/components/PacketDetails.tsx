@@ -18,14 +18,14 @@ const HeaderBlock: React.FC<{ title: string; rows: [string, FieldValue][] }> = (
     <h4 className="text-sm font-medium text-cyber-accent">{title}</h4>
     <div className="grid grid-cols-2 gap-2 p-2 bg-cyber-muted bg-opacity-20 rounded text-xs">
       {rows.map(([label, value]) => (
-        <React.Fragment key={label}>
+        <div key={label} className="contents">
           <p>{label}:</p>
           {value === undefined || value === null || value === '' ? (
             <p className="font-mono text-cyber-foreground/40">Unavailable</p>
           ) : (
             <p className="font-mono break-all">{String(value)}</p>
           )}
-        </React.Fragment>
+        </div>
       ))}
     </div>
   </div>
@@ -101,7 +101,7 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
               )}
 
               {packet.vlan && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="802.1Q VLAN Header"
@@ -110,11 +110,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Priority', packet.vlan.priority],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.ip && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="IP Header"
@@ -127,11 +127,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Destination', packet.ip.destination],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.ipv6 && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="IPv6 Header"
@@ -144,11 +144,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Destination', packet.ipv6.destination],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.tcp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="TCP Header"
@@ -161,11 +161,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Window Size', packet.tcp.window],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.udp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="UDP Header"
@@ -175,11 +175,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Length', packet.udp.length],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.icmp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="ICMP Header"
@@ -189,11 +189,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Description', packet.icmp.typeName],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.arp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="ARP Header"
@@ -205,7 +205,7 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Target IP', packet.arp.targetIP],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {!packet.ethernet && !packet.ip && !packet.ipv6 && !packet.tcp && !packet.udp && !packet.icmp && !packet.arp && (
@@ -237,10 +237,10 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                       {Object.entries(layer.fields || {}).map(([k, v]) => (
-                        <React.Fragment key={k}>
+                        <div key={k} className="contents">
                           <p className="text-cyber-foreground/70">{k}</p>
                           <p className="font-mono break-all">{String(v)}</p>
-                        </React.Fragment>
+                        </div>
                       ))}
                     </div>
                   </div>
