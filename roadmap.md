@@ -29,7 +29,13 @@
 - [x] Protocol + link-type facet filters in the packet list (counts from decoded packets only).
 - [x] CSV export of the filtered decoded summaries (same fields as JSON, one row per packet).
 - [x] Decode checkpointing in IndexedDB: byte offset + decoded packets are saved every 1000 packets, so a refresh/reconnect can resume from the last checkpoint after the same file is re-selected (name + size + modified time verified). Cleared on completion and on cancel.
-- [ ] Optional: per-field byte highlighting in the hex view.
+- [x] Per-field byte highlighting in the hex view (`HexView.tsx`, `fieldOffsets` on Ethernet/VLAN/IPv4/IPv6/ARP/ICMP/TCP/UDP).
+
+## Accounts & saved captures
+- [x] Email + password and Google sign-in (`/auth`, `useAuth` provider, header sign-in/out).
+- [x] `profiles` + `captures` tables with owner-only access; private `captures` storage bucket with per-user folder policies.
+- [x] Save / open / delete decoded analyses from the header ("My captures").
+- [x] API key settings UI (own AI credentials, validated live, kept in the browser only).
 
 ## Validation (6,000-packet real PCAP, headless browser)
 - [x] Decode + display: 6,000/6,000 packets, 253 IPs, 1,000 conversations, DNS/TCP/NTP decoded from captured bytes.

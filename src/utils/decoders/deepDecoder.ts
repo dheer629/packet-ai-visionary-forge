@@ -6,12 +6,17 @@
  * never invents field values.
  */
 
+/** Byte range of a single decoded field: [offset, length] inside the frame. */
+export type FieldOffsets = Record<string, [number, number]>;
+
 export interface DecodedLayer {
   name: string;
   /** Byte offset of this layer inside the frame (evidence for the UI). */
   offset: number;
   length?: number;
   fields: Record<string, string | number>;
+  /** Byte range for individual fields, when the header layout is fixed. */
+  fieldOffsets?: FieldOffsets;
 }
 
 export interface DecodeResult {
@@ -73,8 +78,14 @@ class Ctx {
   truncated = false;
   depth = 0;
 
-  push(name: string, offset: number, fields: Record<string, string | number>, length?: number) {
-    this.layers.push({ name, offset, length, fields });
+  push(
+    name: string,
+    offset: number,
+    fields: Record<string, string | number>,
+    length?: number,
+    fieldOffsets?: FieldOffsets,
+  ) {
+    this.layers.push({ name, offset, length, fields, fieldOffsets });
     this.stack.push(name);
     this.protocol = name;
   }
@@ -126,7 +137,9 @@ function decodeEthernet(b: Bytes, o: number, ctx: Ctx) {
   if (!need(b, o, 14, ctx)) return;
   const dst = mac(b, o), src = mac(b, o + 6);
   const type = u16(b, o + 12);
-  ctx.push('Ethernet', o, { 'Destination MAC': dst, 'Source MAC': src, EtherType: hex(type, 4) }, 14);
+  ctx.push('Ethernet', o, { 'Destination MAC': dst, 'Source MAC': src, EtherType: hex(type, 4) }, 14, {
+    'Destination MAC': [o, 6], 'Source MAC': [o + 6, 6], EtherType: [o + 12, 2],
+  });
   ctx.source = src; ctx.destination = dst;
   if (type <= 1500) {
     ctx.info = `IEEE 802.3 length ${type}`;
@@ -219,7 +232,9 @@ function decodeVlan(b: Bytes, o: number, ctx: Ctx, name: string) {
     Priority: (tci >> 13) & 0x07,
     DEI: (tci >> 12) & 0x01,
     'Inner EtherType': hex(inner, 4),
-  }, 4);
+  }, 4, {
+    'VLAN ID': [o, 2], Priority: [o, 1], DEI: [o, 1], 'Inner EtherType': [o + 2, 2],
+  });
   decodeEtherType(b, o + 4, inner, ctx);
 }
 
@@ -317,7 +332,22 @@ function decodeIPv4(b: Bytes, o: number, ctx: Ctx) {
     Source: src,
     Destination: dst,
     'Options length': Math.max(0, ihl - 20),
-  }, ihl);
+  }, ihl, {
+    Version: [o, 1],
+    'Header length': [o, 1],
+    DSCP: [o + 1, 1],
+    ECN: [o + 1, 1],
+    'Total length': [o + 2, 2],
+    Identification: [o + 4, 2],
+    Flags: [o + 6, 1],
+    'Fragment offset': [o + 6, 2],
+    TTL: [o + 8, 1],
+    Protocol: [o + 9, 1],
+    'Header checksum': [o + 10, 2],
+    Source: [o + 12, 4],
+    Destination: [o + 16, 4],
+    'Options length': [o + 20, Math.max(0, ihl - 20)],
+  });
   ctx.source = src; ctx.destination = dst;
 
   const isFragment = (flags & 0x01) === 1 || fragOffset > 0;
@@ -343,7 +373,16 @@ function decodeIPv6(b: Bytes, o: number, ctx: Ctx) {
     'Hop limit': b[o + 7],
     Source: src,
     Destination: dst,
-  }, 40);
+  }, 40, {
+    Version: [o, 1],
+    'Traffic class': [o, 2],
+    'Flow label': [o + 1, 3],
+    'Payload length': [o + 4, 2],
+    'Next header': [o + 6, 1],
+    'Hop limit': [o + 7, 1],
+    Source: [o + 8, 16],
+    Destination: [o + 24, 16],
+  });
   ctx.source = src; ctx.destination = dst;
 
   // Extension headers
@@ -411,7 +450,11 @@ function decodeARP(b: Bytes, o: number, ctx: Ctx, name: string) {
     'Protocol type': hex(u16(b, o + 2), 4),
     Operation: `${op} (${op === 1 ? 'request' : op === 2 ? 'reply' : 'other'})`,
     'Sender MAC': sha, 'Sender IP': spa, 'Target MAC': tha, 'Target IP': tpa,
-  }, 28);
+  }, 28, {
+    'Hardware type': [o, 2], 'Protocol type': [o + 2, 2], Operation: [o + 6, 2],
+    'Sender MAC': [o + 8, 6], 'Sender IP': [o + 14, 4],
+    'Target MAC': [o + 18, 6], 'Target IP': [o + 24, 4],
+  });
   ctx.source = spa; ctx.destination = tpa;
   ctx.info = op === 1 ? `Who has ${tpa}? Tell ${spa}` : `${spa} is at ${sha}`;
 }
@@ -424,7 +467,10 @@ function decodeICMP(b: Bytes, o: number, ctx: Ctx) {
     fields.Identifier = u16(b, o + 4);
     fields['Sequence number'] = u16(b, o + 6);
   }
-  ctx.push('ICMP', o, fields, 8);
+  ctx.push('ICMP', o, fields, 8, {
+    Type: [o, 1], Code: [o + 1, 1], Checksum: [o + 2, 2],
+    ...(fields.Identifier !== undefined ? { Identifier: [o + 4, 2] as [number, number], 'Sequence number': [o + 6, 2] as [number, number] } : {}),
+  });
   ctx.info = `${icmpName(type)}${fields.Identifier !== undefined ? ` id=${fields.Identifier} seq=${fields['Sequence number']}` : ''}`;
 }
 
@@ -480,7 +526,19 @@ function decodeTCP(b: Bytes, o: number, ctx: Ctx) {
     'Urgent pointer': u16(b, o + 18),
     'Options length': Math.max(0, dataOffset - 20),
     'Payload length': payloadLen,
-  }, dataOffset);
+  }, dataOffset, {
+    'Source port': [o, 2],
+    'Destination port': [o + 2, 2],
+    'Sequence number': [o + 4, 4],
+    'Acknowledgment number': [o + 8, 4],
+    'Header length': [o + 12, 1],
+    Flags: [o + 13, 1],
+    'Window size': [o + 14, 2],
+    Checksum: [o + 16, 2],
+    'Urgent pointer': [o + 18, 2],
+    'Options length': [o + 20, Math.max(0, dataOffset - 20)],
+    'Payload length': [payloadOffset, payloadLen],
+  });
   ctx.source = `${ctx.source}:${sport}`;
   ctx.destination = `${ctx.destination}:${dport}`;
   ctx.info = `${sport} → ${dport} [${flags.join(', ')}] Seq=${u32(b, o + 4)} Ack=${u32(b, o + 8)} Win=${u16(b, o + 14)} Len=${payloadLen}`;
@@ -493,7 +551,9 @@ function decodeUDP(b: Bytes, o: number, ctx: Ctx) {
   const sport = u16(b, o), dport = u16(b, o + 2), len = u16(b, o + 4);
   ctx.push('UDP', o, {
     'Source port': sport, 'Destination port': dport, Length: len, Checksum: hex(u16(b, o + 6), 4),
-  }, 8);
+  }, 8, {
+    'Source port': [o, 2], 'Destination port': [o + 2, 2], Length: [o + 4, 2], Checksum: [o + 6, 2],
+  });
   ctx.source = `${ctx.source}:${sport}`;
   ctx.destination = `${ctx.destination}:${dport}`;
   ctx.info = `${sport} → ${dport} Len=${Math.max(0, len - 8)}`;

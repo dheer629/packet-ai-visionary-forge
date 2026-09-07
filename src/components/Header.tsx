@@ -1,11 +1,22 @@
 
 import React from 'react';
-import { Server, Activity, User, Linkedin } from 'lucide-react';
+import { Server, LogIn, LogOut, Linkedin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useNavigate } from 'react-router-dom';
 import ApiKeySettings from './ApiKeySettings';
+import SavedCaptures from './SavedCaptures';
+import { useAuth } from '@/hooks/useAuth';
 
-const Header = () => {
+interface HeaderProps {
+  analysisData?: any;
+  onLoadCapture?: (data: any) => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ analysisData, onLoadCapture }) => {
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
   const authorDetails = {
     name: "Dheeraj Vishwakarma",
     title: "Senior Architect",
@@ -23,10 +34,24 @@ const Header = () => {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {user && <SavedCaptures analysisData={analysisData} onLoad={onLoadCapture ?? (() => {})} />}
         <ApiKeySettings />
-        
-        <div className="flex items-center space-x-2 border-l pl-4 border-cyber-border">
+
+        {user ? (
+          <div className="flex items-center gap-2 border-l pl-3 border-cyber-border">
+            <span className="hidden text-sm text-gray-700 md:inline">{user.email}</span>
+            <Button variant="ghost" size="sm" className="gap-1" onClick={() => signOut()}>
+              <LogOut className="h-4 w-4" /> Sign out
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" className="gap-1" onClick={() => navigate('/auth')}>
+            <LogIn className="h-4 w-4" /> Sign in
+          </Button>
+        )}
+
+        <div className="flex items-center space-x-2 border-l pl-3 border-cyber-border">
           <Avatar className="h-9 w-9 ring-2 ring-blue-200">
             <AvatarImage src={authorDetails.avatar} alt={authorDetails.name} />
             <AvatarFallback>DV</AvatarFallback>
