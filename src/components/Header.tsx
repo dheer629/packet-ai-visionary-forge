@@ -37,6 +37,10 @@ const Header: React.FC<HeaderProps> = ({ analysisData, onLoadCapture }) => {
       <div className="flex items-center gap-3">
         {user && <SavedCaptures analysisData={analysisData} onLoad={onLoadCapture ?? (() => {})} />}
         <ApiKeySettings />
+        <Button variant="ghost" size="sm" onClick={() => navigate('/settings/api-keys')}>
+          Key settings page
+        </Button>
+
 
         {user ? (
           <div className="flex items-center gap-2 border-l pl-3 border-cyber-border">
