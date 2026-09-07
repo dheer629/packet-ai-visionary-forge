@@ -203,16 +203,26 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
   // ready-to-use filters that suit it.
   const profile = useMemo(() => detectTraceProfile(safePackets), [safePackets]);
 
-  /** Maps a suggested protocol name onto the exact facet value in this capture. */
+  /** Every protocol name present in the capture, including tunnelled layers. */
+  const allProtocolNames = useMemo(() => {
+    const set = new Set<string>(protocolFacets.map(([p]) => p));
+    safePackets.forEach((p) => {
+      (Array.isArray(p?.protocolStack) ? p.protocolStack : []).forEach((s: unknown) =>
+        set.add(String(s)),
+      );
+    });
+    return Array.from(set);
+  }, [protocolFacets, safePackets]);
+
+  /** Maps a suggested protocol name onto the exact value used in this capture. */
   const resolveProtocols = React.useCallback(
-    (names: string[] = []) => {
-      const facetKeys = protocolFacets.map(([p]) => p);
-      return names
-        .map((n) => facetKeys.find((k) => k.toUpperCase() === n.toUpperCase()))
-        .filter((v): v is string => Boolean(v));
-    },
-    [protocolFacets],
+    (names: string[] = []) =>
+      names
+        .map((n) => allProtocolNames.find((k) => k.toUpperCase() === n.toUpperCase()))
+        .filter((v): v is string => Boolean(v)),
+    [allProtocolNames],
   );
+
 
   const [autoApplied, setAutoApplied] = useState<string | null>(null);
 
