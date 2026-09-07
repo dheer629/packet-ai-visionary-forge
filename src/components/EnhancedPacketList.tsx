@@ -9,15 +9,29 @@ import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
 import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
-import { detectTraceProfile } from '@/utils/traceProfile';
+import { detectTraceProfile, listTraceProfiles, getTraceProfileByName } from '@/utils/traceProfile';
 import { useToast } from '@/components/ui/use-toast';
+
+/** View settings persisted alongside a saved capture. */
+export interface PacketViewState {
+  profileOverride?: string | null;
+  appliedFilterId?: string | null;
+  selectedProtocols?: string[];
+  selectedLinkTypes?: string[];
+  search?: string;
+}
 
 interface EnhancedPacketListProps {
   packets: any[];
   filename?: string;
   captureSize?: number;
   summary?: Record<string, unknown>;
+  /** Previously saved view, restored when a stored capture is reopened. */
+  viewState?: PacketViewState | null;
+  /** Called whenever the view changes so it can be saved with the capture. */
+  onViewStateChange?: (state: PacketViewState) => void;
 }
+
 
 const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], filename, captureSize, summary }) => {
   const { toast } = useToast();
