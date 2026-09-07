@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
 import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
+import { detectTraceProfile } from '@/utils/traceProfile';
 import { useToast } from '@/components/ui/use-toast';
 
 interface EnhancedPacketListProps {
