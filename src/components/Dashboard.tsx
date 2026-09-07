@@ -376,7 +376,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen cyber-grid-bg py-6 px-4 md:px-6 bg-gradient-to-br from-white to-blue-50">
       <div className="max-w-7xl mx-auto">
-        <Header />
+        <Header analysisData={analysisData} onLoadCapture={setAnalysisData} />
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <div className="lg:col-span-1">
