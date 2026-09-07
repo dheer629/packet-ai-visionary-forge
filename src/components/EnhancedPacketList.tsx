@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
 import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
+import { detectTraceProfile } from '@/utils/traceProfile';
 import { useToast } from '@/components/ui/use-toast';
 
 interface EnhancedPacketListProps {
@@ -198,8 +199,65 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
   }, [safePackets]);
 
+  // Auto-detected trace profile (what kind of capture this is) plus the
+  // ready-to-use filters that suit it.
+  const profile = useMemo(() => detectTraceProfile(safePackets), [safePackets]);
+
+  /** Every protocol name present in the capture, including tunnelled layers. */
+  const allProtocolNames = useMemo(() => {
+    const set = new Set<string>(protocolFacets.map(([p]) => p));
+    safePackets.forEach((p) => {
+      (Array.isArray(p?.protocolStack) ? p.protocolStack : []).forEach((s: unknown) =>
+        set.add(String(s)),
+      );
+    });
+    return Array.from(set);
+  }, [protocolFacets, safePackets]);
+
+  /** Maps a suggested protocol name onto the exact value used in this capture. */
+  const resolveProtocols = React.useCallback(
+    (names: string[] = []) =>
+      names
+        .map((n) => allProtocolNames.find((k) => k.toUpperCase() === n.toUpperCase()))
+        .filter((v): v is string => Boolean(v)),
+    [allProtocolNames],
+  );
+
+
+  const [autoApplied, setAutoApplied] = useState<string | null>(null);
+
+  // Open the capture in its detected format once per loaded trace.
+  useEffect(() => {
+    if (!profile) return;
+    const focus = resolveProtocols(profile.focusProtocols);
+    if (focus.length === 0 || focus.length === protocolFacets.length) return;
+    setSelectedProtocols(focus);
+    setAutoApplied(profile.name);
+    toast({
+      title: `Opened as ${profile.name}`,
+      description: `${profile.reason} Showing ${focus.join(', ')} — pick another ready-made filter or show all frames.`,
+    });
+    // Re-runs only when a different capture is loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
+
+  const applySuggested = (f: { protocols?: string[]; text?: string; label: string }) => {
+    setSelectedProtocols(resolveProtocols(f.protocols));
+    setFilter(f.text || '');
+    setAutoApplied(null);
+    toast({ title: 'Filter applied', description: f.label });
+  };
+
+  const showEverything = () => {
+    setSelectedProtocols([]);
+    setSelectedLinkTypes([]);
+    setFilter('');
+    setAutoApplied(null);
+  };
+
   const toggleValue = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
 
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
@@ -225,10 +283,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
         return false;
       }
       
-      // Quick protocol facet filter
-      if (selectedProtocols.length > 0 && !selectedProtocols.includes(String(packet.protocol || 'Unknown'))) {
-        return false;
+      // Quick protocol facet filter — matches the displayed protocol or any
+      // protocol in the decoded stack (so a tunnelled frame still matches GTP).
+      if (selectedProtocols.length > 0) {
+        const stack: string[] = Array.isArray(packet.protocolStack) ? packet.protocolStack : [];
+        const candidates = [String(packet.protocol || 'Unknown'), ...stack.map(String)];
+        if (!candidates.some((c) => selectedProtocols.includes(c))) return false;
       }
+
 
       // Link-type facet filter
       if (selectedLinkTypes.length > 0) {
@@ -397,7 +459,44 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
           />
         </div>
       </div>
-      
+
+      {profile && (
+        <div className="mb-4 rounded-md border border-cyber-border bg-blue-50/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-blue-900">Detected trace type: {profile.name}</p>
+              <p className="text-xs text-blue-800/80">{profile.reason}</p>
+            </div>
+            <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={showEverything}>
+              Show all frames
+            </Button>
+          </div>
+          {autoApplied && (
+            <p className="mt-1 text-[11px] text-blue-800/70">
+              Opened with the matching view applied automatically.
+            </p>
+          )}
+          {profile.filters.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-blue-900/70 mr-1">Ready-to-use filters:</span>
+              {profile.filters.map((f) => (
+                <Button
+                  key={f.id}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 bg-white text-[11px]"
+                  title={f.description}
+                  onClick={() => applySuggested(f)}
+                >
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+
       {(protocolFacets.length > 0 || linkTypeFacets.length > 0) && (
         <div className="mb-4 space-y-2">
           {protocolFacets.length > 0 && (
