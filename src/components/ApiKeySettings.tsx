@@ -20,7 +20,7 @@ interface ApiKey {
   selectedModel?: string;
 }
 
-const ApiKeySettings = () => {
+const ApiKeySettings = ({ inline = false }: { inline?: boolean }) => {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const [apiKeys, setApiKeys] = useState<ApiKey[]>(() => {
