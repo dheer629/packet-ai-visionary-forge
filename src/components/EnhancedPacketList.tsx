@@ -11,15 +11,16 @@ import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
 import { detectTraceProfile, listTraceProfiles, getTraceProfileByName } from '@/utils/traceProfile';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  migrateViewState,
+  hasStoredView,
+  withViewStateVersion,
+  type PacketViewState,
+} from '@/utils/viewState';
 
-/** View settings persisted alongside a saved capture. */
-export interface PacketViewState {
-  profileOverride?: string | null;
-  appliedFilterId?: string | null;
-  selectedProtocols?: string[];
-  selectedLinkTypes?: string[];
-  search?: string;
-}
+/** View settings persisted alongside a saved capture (versioned schema). */
+export type { PacketViewState };
+
 
 interface EnhancedPacketListProps {
   packets: any[];
