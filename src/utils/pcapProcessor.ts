@@ -261,7 +261,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     console.log(`Processing ${isPcapNg ? 'PCAPNG' : 'PCAP'} file: ${filename}, size: ${fileSize} bytes, endianness: ${isLittleEndian ? 'little' : (isBigEndian ? 'big' : 'N/A')}`);
     
     if (isPcapNg) {
-      return await parsePcapNgFormat(dataView, fileSize, filename, progressCallback, control);
+      return await parsePcapNgFormat(dataView, fileSize, filename, progressCallback, control, options);
     }
     
     // Parse standard PCAP format
@@ -274,20 +274,24 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     
     console.log(`PCAP version: ${versionMajor}.${versionMinor}, network type: ${network}, snaplen: ${snaplen}`);
     
-    // Packet parsing starts at byte 24
-    const packets = [];
-    let offset = 24;
-    let packetCount = 0;
+    // Packet parsing starts at byte 24 unless we are resuming from a checkpoint
+    const resumedPackets = Array.isArray(options?.resume?.packets) ? options!.resume!.packets : [];
+    const packets: any[] = [...resumedPackets];
+    let offset = resumedPackets.length > 0 && options?.resume?.offset ? options.resume.offset : 24;
+    let packetCount = packets.length;
+    let lastCheckpointedCount = packets.length;
     const ipAddresses = new Set();
     const protocolCounts: Record<string, number> = {};
     const conversations = new Map();
     const packetSizes: number[] = [];
-    let minTimestamp = Number.MAX_VALUE;
-    let maxTimestamp = 0;
-    
-    // Debug the first few bytes to understand the format
-    const firstPacketData = new Uint8Array(buffer.slice(offset, offset + 48));
-    console.log('First packet header and data (hex):', Array.from(firstPacketData).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    const replayed = replayStats(packets, ipAddresses, protocolCounts, conversations, packetSizes);
+    let minTimestamp = replayed.minTimestamp;
+    let maxTimestamp = replayed.maxTimestamp;
+
+    if (packetCount > 0) {
+      console.log(`Resuming PCAP decode from byte ${offset} with ${packetCount} checkpointed packets`);
+    }
+
     
     // Process packets until we reach the end of the file
     while (offset + 16 <= buffer.byteLength) {
