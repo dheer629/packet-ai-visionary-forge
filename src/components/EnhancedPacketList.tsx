@@ -198,8 +198,55 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
   }, [safePackets]);
 
+  // Auto-detected trace profile (what kind of capture this is) plus the
+  // ready-to-use filters that suit it.
+  const profile = useMemo(() => detectTraceProfile(safePackets), [safePackets]);
+
+  /** Maps a suggested protocol name onto the exact facet value in this capture. */
+  const resolveProtocols = React.useCallback(
+    (names: string[] = []) => {
+      const facetKeys = protocolFacets.map(([p]) => p);
+      return names
+        .map((n) => facetKeys.find((k) => k.toUpperCase() === n.toUpperCase()))
+        .filter((v): v is string => Boolean(v));
+    },
+    [protocolFacets],
+  );
+
+  const [autoApplied, setAutoApplied] = useState<string | null>(null);
+
+  // Open the capture in its detected format once per loaded trace.
+  useEffect(() => {
+    if (!profile) return;
+    const focus = resolveProtocols(profile.focusProtocols);
+    if (focus.length === 0 || focus.length === protocolFacets.length) return;
+    setSelectedProtocols(focus);
+    setAutoApplied(profile.name);
+    toast({
+      title: `Opened as ${profile.name}`,
+      description: `${profile.reason} Showing ${focus.join(', ')} — pick another ready-made filter or show all frames.`,
+    });
+    // Re-runs only when a different capture is loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
+
+  const applySuggested = (f: { protocols?: string[]; text?: string; label: string }) => {
+    setSelectedProtocols(resolveProtocols(f.protocols));
+    setFilter(f.text || '');
+    setAutoApplied(null);
+    toast({ title: 'Filter applied', description: f.label });
+  };
+
+  const showEverything = () => {
+    setSelectedProtocols([]);
+    setSelectedLinkTypes([]);
+    setFilter('');
+    setAutoApplied(null);
+  };
+
   const toggleValue = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
 
   // Filter packets based on search term and filters - memoized for performance
   const filteredPackets = useMemo(() => {
