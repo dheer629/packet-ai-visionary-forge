@@ -73,8 +73,14 @@ class Ctx {
   truncated = false;
   depth = 0;
 
-  push(name: string, offset: number, fields: Record<string, string | number>, length?: number) {
-    this.layers.push({ name, offset, length, fields });
+  push(
+    name: string,
+    offset: number,
+    fields: Record<string, string | number>,
+    length?: number,
+    fieldOffsets?: FieldOffsets,
+  ) {
+    this.layers.push({ name, offset, length, fields, fieldOffsets });
     this.stack.push(name);
     this.protocol = name;
   }
