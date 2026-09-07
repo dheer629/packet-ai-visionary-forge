@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/Auth";
+import ApiKeysPage from "./pages/ApiKeys";
 import { AuthProvider } from "./hooks/useAuth";
 
 const queryClient = new QueryClient();
