@@ -273,10 +273,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
         return false;
       }
       
-      // Quick protocol facet filter
-      if (selectedProtocols.length > 0 && !selectedProtocols.includes(String(packet.protocol || 'Unknown'))) {
-        return false;
+      // Quick protocol facet filter — matches the displayed protocol or any
+      // protocol in the decoded stack (so a tunnelled frame still matches GTP).
+      if (selectedProtocols.length > 0) {
+        const stack: string[] = Array.isArray(packet.protocolStack) ? packet.protocolStack : [];
+        const candidates = [String(packet.protocol || 'Unknown'), ...stack.map(String)];
+        if (!candidates.some((c) => selectedProtocols.includes(c))) return false;
       }
+
 
       // Link-type facet filter
       if (selectedLinkTypes.length > 0) {
