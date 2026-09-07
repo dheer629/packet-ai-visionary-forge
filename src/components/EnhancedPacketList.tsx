@@ -445,7 +445,44 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
           />
         </div>
       </div>
-      
+
+      {profile && (
+        <div className="mb-4 rounded-md border border-cyber-border bg-blue-50/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-blue-900">Detected trace type: {profile.name}</p>
+              <p className="text-xs text-blue-800/80">{profile.reason}</p>
+            </div>
+            <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={showEverything}>
+              Show all frames
+            </Button>
+          </div>
+          {autoApplied && (
+            <p className="mt-1 text-[11px] text-blue-800/70">
+              Opened with the matching view applied automatically.
+            </p>
+          )}
+          {profile.filters.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-blue-900/70 mr-1">Ready-to-use filters:</span>
+              {profile.filters.map((f) => (
+                <Button
+                  key={f.id}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 bg-white text-[11px]"
+                  title={f.description}
+                  onClick={() => applySuggested(f)}
+                >
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+
       {(protocolFacets.length > 0 || linkTypeFacets.length > 0) && (
         <div className="mb-4 space-y-2">
           {protocolFacets.length > 0 && (
