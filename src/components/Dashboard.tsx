@@ -467,7 +467,13 @@ const Dashboard = () => {
             </TabsList>
             
             <TabsContent value="packets" className="mt-4">
-              <EnhancedPacketList packets={analysisData?.packets || []} />
+              <EnhancedPacketList
+                packets={analysisData?.packets || []}
+                filename={analysisData?.filename}
+                captureSize={analysisData?.size}
+                summary={analysisData?.summary}
+              />
+
             </TabsContent>
             
             <TabsContent value="visualizations" className="mt-4">

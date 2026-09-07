@@ -99,9 +99,100 @@ function applyDecodedFrame(
 }
 
 /**
+ * Resume / checkpoint plumbing. `resume` seeds the decode with packets that
+ * were already decoded in an earlier session; `checkpoint` receives real
+ * progress (byte offset + newly decoded packets) so it can be persisted.
+ */
+export interface DecodeResumeState {
+  offset: number;
+  packets: any[];
+  interfaces?: any[];
+  chunks?: number;
+}
+
+export interface DecodeCheckpointSink {
+  save: (state: {
+    offset: number;
+    packetCount: number;
+    newPackets: any[];
+    interfaces?: any[];
+  }) => void | Promise<void>;
+  clear?: () => void | Promise<void>;
+}
+
+export interface DecodeOptions {
+  resume?: DecodeResumeState;
+  checkpoint?: DecodeCheckpointSink;
+}
+
+/**
+ * Rebuild the capture-wide statistics from packets restored from a checkpoint.
+ * Only values that were decoded from the capture are replayed.
+ */
+function replayStats(
+  packets: any[],
+  ipAddresses: Set<any>,
+  protocolCounts: Record<string, number>,
+  conversations: Map<string, any>,
+  packetSizes: number[]
+) {
+  let minTimestamp = Number.MAX_VALUE;
+  let maxTimestamp = 0;
+
+  for (const packet of packets) {
+    const timestamp = parseFloat(packet?.time);
+    if (Number.isFinite(timestamp)) {
+      minTimestamp = Math.min(minTimestamp, timestamp);
+      maxTimestamp = Math.max(maxTimestamp, timestamp);
+    }
+    const length = Number(packet?.length) || 0;
+    packetSizes.push(length);
+
+    const hostOf = (endpoint: string) => {
+      const parts = String(endpoint ?? '').split(':');
+      return parts.length > 1 ? parts.slice(0, -1).join(':') : String(endpoint ?? '');
+    };
+    const srcHost = hostOf(packet?.source);
+    const dstHost = hostOf(packet?.destination);
+    if (srcHost && srcHost !== 'Unknown') ipAddresses.add(srcHost);
+    if (dstHost && dstHost !== 'Unknown') ipAddresses.add(dstHost);
+
+    const protocol = packet?.protocol || 'Unknown';
+    protocolCounts[protocol] = (protocolCounts[protocol] || 0) + 1;
+
+    const convKey = [srcHost, dstHost].sort().join(' - ');
+    const existing = conversations.get(convKey);
+    if (existing) {
+      existing.packetCount++;
+      existing.bytes += length;
+      existing.endTime = Number.isFinite(timestamp) ? timestamp : existing.endTime;
+    } else {
+      conversations.set(convKey, {
+        endpointA: srcHost,
+        endpointB: dstHost,
+        source: srcHost,
+        destination: dstHost,
+        protocol,
+        packetCount: 1,
+        bytes: length,
+        startTime: Number.isFinite(timestamp) ? timestamp : 0,
+        endTime: Number.isFinite(timestamp) ? timestamp : 0,
+      });
+    }
+  }
+
+  return { minTimestamp, maxTimestamp };
+}
+
+/**
  * Process a PCAP file and extract network data in a browser environment
  */
-export const processPcapFile = async (file: File, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
+export const processPcapFile = async (
+  file: File,
+  progressCallback?: (progress: number) => void,
+  control?: DecodeController,
+  options?: DecodeOptions
+): Promise<any> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -119,7 +210,7 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
         
         // Process the PCAP data
         progressCallback?.(0.3);
-        const analysisData = await parseActualPcapData(file.name, buffer, progressCallback, control);
+        const analysisData = await parseActualPcapData(file.name, buffer, progressCallback, control, options);
         
         // Complete processing
         progressCallback?.(1.0);
@@ -143,7 +234,8 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
 /**
  * Parse actual PCAP binary data in the browser
  */
-const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
+const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void, control?: DecodeController, options?: DecodeOptions): Promise<any> => {
+
   // Create a DataView to read binary data
   const dataView = new DataView(buffer);
   const fileSize = buffer.byteLength;
@@ -169,7 +261,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     console.log(`Processing ${isPcapNg ? 'PCAPNG' : 'PCAP'} file: ${filename}, size: ${fileSize} bytes, endianness: ${isLittleEndian ? 'little' : (isBigEndian ? 'big' : 'N/A')}`);
     
     if (isPcapNg) {
-      return await parsePcapNgFormat(dataView, fileSize, filename, progressCallback, control);
+      return await parsePcapNgFormat(dataView, fileSize, filename, progressCallback, control, options);
     }
     
     // Parse standard PCAP format
@@ -182,20 +274,24 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     
     console.log(`PCAP version: ${versionMajor}.${versionMinor}, network type: ${network}, snaplen: ${snaplen}`);
     
-    // Packet parsing starts at byte 24
-    const packets = [];
-    let offset = 24;
-    let packetCount = 0;
+    // Packet parsing starts at byte 24 unless we are resuming from a checkpoint
+    const resumedPackets = Array.isArray(options?.resume?.packets) ? options!.resume!.packets : [];
+    const packets: any[] = [...resumedPackets];
+    let offset = resumedPackets.length > 0 && options?.resume?.offset ? options.resume.offset : 24;
+    let packetCount = packets.length;
+    let lastCheckpointedCount = packets.length;
     const ipAddresses = new Set();
     const protocolCounts: Record<string, number> = {};
     const conversations = new Map();
     const packetSizes: number[] = [];
-    let minTimestamp = Number.MAX_VALUE;
-    let maxTimestamp = 0;
-    
-    // Debug the first few bytes to understand the format
-    const firstPacketData = new Uint8Array(buffer.slice(offset, offset + 48));
-    console.log('First packet header and data (hex):', Array.from(firstPacketData).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    const replayed = replayStats(packets, ipAddresses, protocolCounts, conversations, packetSizes);
+    let minTimestamp = replayed.minTimestamp;
+    let maxTimestamp = replayed.maxTimestamp;
+
+    if (packetCount > 0) {
+      console.log(`Resuming PCAP decode from byte ${offset} with ${packetCount} checkpointed packets`);
+    }
+
     
     // Process packets until we reach the end of the file
     while (offset + 16 <= buffer.byteLength) {
@@ -279,8 +375,17 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         // Log progress occasionally
         if (packetCount % 1000 === 0) {
           progressCallback?.(0.3 + 0.7 * Math.min(offset / Math.max(fileSize, 1), 1));
+          if (options?.checkpoint) {
+            await options.checkpoint.save({
+              offset,
+              packetCount,
+              newPackets: packets.slice(lastCheckpointedCount),
+            });
+            lastCheckpointedCount = packets.length;
+          }
           if (control) await control.gate();
         }
+
       } catch (error) {
         if (isDecodeCancelled(error)) throw error;
         console.error(`Error parsing packet at offset ${offset}:`, error);
@@ -289,7 +394,11 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
       }
     }
       
+    // Decode finished: the checkpoint is no longer needed.
+    await options?.checkpoint?.clear?.();
+
     console.log(`Finished processing ${packetCount} packets`);
+
     console.log(`Detected IP addresses: ${Array.from(ipAddresses).join(', ')}`);
     console.log(`Detected protocols: ${Object.keys(protocolCounts).join(', ')}`);
     console.log(`Conversation count: ${conversations.size}`);
@@ -395,18 +504,22 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
  * Parse PCAP-NG format files
  * This is a simplified implementation as PCAP-NG is much more complex
  */
-const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
+const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void, control?: DecodeController, options?: DecodeOptions): Promise<any> => {
   console.log('Detected PCAP-NG format, processing block structure');
   
-  // PCAP-NG variables
-  const packets: any[] = [];
+  // PCAP-NG variables — seeded from a checkpoint when resuming
+  const resumedPackets = Array.isArray(options?.resume?.packets) ? options!.resume!.packets : [];
+  const packets: any[] = [...resumedPackets];
   const ipAddresses = new Set<string>();
   const protocolCounts: Record<string, number> = {};
   const conversations = new Map();
   const packetSizes: number[] = [];
-  let minTimestamp = Number.MAX_VALUE;
-  let maxTimestamp = 0;
-  let interfaceDescriptions: any[] = [];
+  const replayed = replayStats(packets, ipAddresses, protocolCounts, conversations, packetSizes);
+  let minTimestamp = replayed.minTimestamp;
+  let maxTimestamp = replayed.maxTimestamp;
+  let interfaceDescriptions: any[] = Array.isArray(options?.resume?.interfaces)
+    ? [...options!.resume!.interfaces!]
+    : [];
   let pendingGate = false;
   
   // Block Type values
@@ -415,9 +528,15 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
   const EPB_TYPE = 0x00000006; // Enhanced Packet Block
   const SPB_TYPE = 0x00000003; // Simple Packet Block
   
-  // Parse PCAP-NG blocks
-  let offset = 0;
-  let packetCount = 0;
+  // Parse PCAP-NG blocks (block boundaries make resuming safe)
+  let offset = resumedPackets.length > 0 && options?.resume?.offset ? options.resume.offset : 0;
+  let packetCount = packets.length;
+  let lastCheckpointedCount = packets.length;
+
+  if (packetCount > 0) {
+    console.log(`Resuming PCAP-NG decode from byte ${offset} with ${packetCount} checkpointed packets`);
+  }
+
   
   try {
     while (offset + 12 <= dataView.byteLength) {
@@ -581,6 +700,15 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
 
       if (pendingGate) {
         pendingGate = false;
+        if (options?.checkpoint) {
+          await options.checkpoint.save({
+            offset,
+            packetCount,
+            newPackets: packets.slice(lastCheckpointedCount),
+            interfaces: interfaceDescriptions,
+          });
+          lastCheckpointedCount = packets.length;
+        }
         if (control) await control.gate();
       }
     }
@@ -590,7 +718,11 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
     // Continue with whatever packets we managed to parse
   }
   
+  // Decode finished: the checkpoint is no longer needed.
+  await options?.checkpoint?.clear?.();
+
   console.log(`Finished processing ${packetCount} PCAP-NG packets across ${interfaceDescriptions.length} interfaces`);
+
   
   // Calculate statistics (similar to parseActualPcapData)
   const avgPacketSize = packetSizes.length > 0 

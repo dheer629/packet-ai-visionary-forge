@@ -3,6 +3,13 @@ import { Upload, Pause, Play, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 
+export interface DecodeCheckpointInfo {
+  fileName: string;
+  packetCount: number;
+  offset: number;
+  fileSize: number;
+}
+
 interface FileUploadBoxProps {
   isUploading: boolean;
   isPaused: boolean;
@@ -14,6 +21,8 @@ interface FileUploadBoxProps {
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
+  checkpoint?: DecodeCheckpointInfo | null;
+  onDiscardCheckpoint?: () => void;
 }
 
 const FileUploadBox: React.FC<FileUploadBoxProps> = ({
@@ -27,9 +36,30 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({
   onPause,
   onResume,
   onCancel,
+  checkpoint,
+  onDiscardCheckpoint,
 }) => {
+  const checkpointPercent = checkpoint && checkpoint.fileSize
+    ? Math.min(100, Math.round((checkpoint.offset / checkpoint.fileSize) * 100))
+    : 0;
+
   return (
     <div className="flex flex-col items-center justify-center border-2 border-dashed border-cyber-border rounded-md p-6 bg-cyber-muted bg-opacity-30 transition-all hover:border-cyber-primary">
+      {checkpoint && !isUploading && (
+        <div className="mb-4 w-full rounded-md border border-cyber-border bg-cyber-muted/50 p-3 text-xs">
+          <p className="font-medium text-cyber-accent">Unfinished decode found</p>
+          <p className="mt-1 text-cyber-foreground">
+            {checkpoint.fileName} — {checkpoint.packetCount.toLocaleString()} packets decoded ({checkpointPercent}%).
+            Select the same file again to continue from where it stopped.
+          </p>
+          {onDiscardCheckpoint && (
+            <Button type="button" size="sm" variant="ghost" className="mt-2 text-xs" onClick={onDiscardCheckpoint}>
+              Discard saved progress
+            </Button>
+          )}
+        </div>
+      )}
+
       <input
         type="file"
         id="pcap-upload"

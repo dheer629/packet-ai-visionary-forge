@@ -27,5 +27,14 @@
 - [x] Progress now tracks real file offset instead of a fixed packet estimate.
 - [x] Packets carry their link type; JSON export of decoded summaries with byte offsets and layer fields (`exportPackets.ts`).
 - [x] Protocol + link-type facet filters in the packet list (counts from decoded packets only).
+- [x] CSV export of the filtered decoded summaries (same fields as JSON, one row per packet).
+- [x] Decode checkpointing in IndexedDB: byte offset + decoded packets are saved every 1000 packets, so a refresh/reconnect can resume from the last checkpoint after the same file is re-selected (name + size + modified time verified). Cleared on completion and on cancel.
 - [ ] Optional: per-field byte highlighting in the hex view.
+
+## Validation (6,000-packet real PCAP, headless browser)
+- [x] Decode + display: 6,000/6,000 packets, 253 IPs, 1,000 conversations, DNS/TCP/NTP decoded from captured bytes.
+- [x] Pause → refresh → re-select file: banner showed "3,000 packets decoded (50%)", resume finished at 6,000.
+- [x] JSON and CSV exports: 6,000 rows, byte offsets and every decoded layer field, named after the capture.
+- [x] Protocol / link-type filter chips, Decoders tab (31 full / 12 partial / 2 not decoded), no console errors.
+- Known gaps: no user accounts/auth; vendor AI providers still need the user's own API key (built-in AI works keyless).
 

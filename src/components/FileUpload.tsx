@@ -15,6 +15,8 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
     pauseDecode,
     resumeDecode,
     cancelDecode,
+    checkpoint,
+    discardCheckpoint,
   } = useFileProcessor(onFileUpload);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,6 +41,17 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
         onPause={pauseDecode}
         onResume={resumeDecode}
         onCancel={cancelDecode}
+        checkpoint={
+          checkpoint
+            ? {
+                fileName: checkpoint.fileName,
+                packetCount: checkpoint.packetCount,
+                offset: checkpoint.offset,
+                fileSize: checkpoint.fileSize,
+              }
+            : null
+        }
+        onDiscardCheckpoint={discardCheckpoint}
       />
 
       <div className="mt-4 flex justify-end">
