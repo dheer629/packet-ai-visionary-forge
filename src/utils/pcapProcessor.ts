@@ -99,9 +99,100 @@ function applyDecodedFrame(
 }
 
 /**
+ * Resume / checkpoint plumbing. `resume` seeds the decode with packets that
+ * were already decoded in an earlier session; `checkpoint` receives real
+ * progress (byte offset + newly decoded packets) so it can be persisted.
+ */
+export interface DecodeResumeState {
+  offset: number;
+  packets: any[];
+  interfaces?: any[];
+  chunks?: number;
+}
+
+export interface DecodeCheckpointSink {
+  save: (state: {
+    offset: number;
+    packetCount: number;
+    newPackets: any[];
+    interfaces?: any[];
+  }) => void | Promise<void>;
+  clear?: () => void | Promise<void>;
+}
+
+export interface DecodeOptions {
+  resume?: DecodeResumeState;
+  checkpoint?: DecodeCheckpointSink;
+}
+
+/**
+ * Rebuild the capture-wide statistics from packets restored from a checkpoint.
+ * Only values that were decoded from the capture are replayed.
+ */
+function replayStats(
+  packets: any[],
+  ipAddresses: Set<any>,
+  protocolCounts: Record<string, number>,
+  conversations: Map<string, any>,
+  packetSizes: number[]
+) {
+  let minTimestamp = Number.MAX_VALUE;
+  let maxTimestamp = 0;
+
+  for (const packet of packets) {
+    const timestamp = parseFloat(packet?.time);
+    if (Number.isFinite(timestamp)) {
+      minTimestamp = Math.min(minTimestamp, timestamp);
+      maxTimestamp = Math.max(maxTimestamp, timestamp);
+    }
+    const length = Number(packet?.length) || 0;
+    packetSizes.push(length);
+
+    const hostOf = (endpoint: string) => {
+      const parts = String(endpoint ?? '').split(':');
+      return parts.length > 1 ? parts.slice(0, -1).join(':') : String(endpoint ?? '');
+    };
+    const srcHost = hostOf(packet?.source);
+    const dstHost = hostOf(packet?.destination);
+    if (srcHost && srcHost !== 'Unknown') ipAddresses.add(srcHost);
+    if (dstHost && dstHost !== 'Unknown') ipAddresses.add(dstHost);
+
+    const protocol = packet?.protocol || 'Unknown';
+    protocolCounts[protocol] = (protocolCounts[protocol] || 0) + 1;
+
+    const convKey = [srcHost, dstHost].sort().join(' - ');
+    const existing = conversations.get(convKey);
+    if (existing) {
+      existing.packetCount++;
+      existing.bytes += length;
+      existing.endTime = Number.isFinite(timestamp) ? timestamp : existing.endTime;
+    } else {
+      conversations.set(convKey, {
+        endpointA: srcHost,
+        endpointB: dstHost,
+        source: srcHost,
+        destination: dstHost,
+        protocol,
+        packetCount: 1,
+        bytes: length,
+        startTime: Number.isFinite(timestamp) ? timestamp : 0,
+        endTime: Number.isFinite(timestamp) ? timestamp : 0,
+      });
+    }
+  }
+
+  return { minTimestamp, maxTimestamp };
+}
+
+/**
  * Process a PCAP file and extract network data in a browser environment
  */
-export const processPcapFile = async (file: File, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
+export const processPcapFile = async (
+  file: File,
+  progressCallback?: (progress: number) => void,
+  control?: DecodeController,
+  options?: DecodeOptions
+): Promise<any> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -119,7 +210,7 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
         
         // Process the PCAP data
         progressCallback?.(0.3);
-        const analysisData = await parseActualPcapData(file.name, buffer, progressCallback, control);
+        const analysisData = await parseActualPcapData(file.name, buffer, progressCallback, control, options);
         
         // Complete processing
         progressCallback?.(1.0);
@@ -143,7 +234,8 @@ export const processPcapFile = async (file: File, progressCallback?: (progress: 
 /**
  * Parse actual PCAP binary data in the browser
  */
-const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
+const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void, control?: DecodeController, options?: DecodeOptions): Promise<any> => {
+
   // Create a DataView to read binary data
   const dataView = new DataView(buffer);
   const fileSize = buffer.byteLength;
