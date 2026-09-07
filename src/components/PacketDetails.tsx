@@ -3,6 +3,7 @@ import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import HexView from './HexView';
 
 interface PacketDetailsProps {
   packet: any;
@@ -73,11 +74,7 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
         </TabsList>
         
         <TabsContent value="hex" className="mt-4">
-          <ScrollArea className="h-60">
-            <div className="font-mono text-xs whitespace-pre p-2">
-              {packet.hexDump || "No hex bytes captured for this packet."}
-            </div>
-          </ScrollArea>
+          <HexView packet={packet} />
         </TabsContent>
         
         <TabsContent value="ascii" className="mt-4">
