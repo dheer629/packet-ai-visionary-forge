@@ -260,11 +260,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
 
   const [autoApplied, setAutoApplied] = useState<string | null>(null);
   // A restored view (saved capture) must not be overwritten by auto-detection.
-  const restoredView = React.useRef(Boolean(viewState && (
-    viewState.profileOverride || viewState.appliedFilterId ||
-    (viewState.selectedProtocols?.length ?? 0) > 0 ||
-    (viewState.selectedLinkTypes?.length ?? 0) > 0 || viewState.search
-  )));
+  const restoredView = React.useRef(hasStoredView(storedView));
 
   // Open the capture in its detected format once per loaded trace.
   useEffect(() => {
@@ -283,15 +279,16 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
 
   // Report the current view so it can be stored with the capture.
   useEffect(() => {
-    onViewStateChange?.({
+    onViewStateChange?.(withViewStateVersion({
       profileOverride,
       appliedFilterId,
       selectedProtocols,
       selectedLinkTypes,
       search: filter,
-    });
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileOverride, appliedFilterId, selectedProtocols, selectedLinkTypes, filter]);
+
 
   const applySuggested = (f: { id?: string; protocols?: string[]; text?: string; label: string }) => {
     restoredView.current = true;
