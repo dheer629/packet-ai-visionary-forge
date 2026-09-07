@@ -255,10 +255,16 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
 
 
   const [autoApplied, setAutoApplied] = useState<string | null>(null);
+  // A restored view (saved capture) must not be overwritten by auto-detection.
+  const restoredView = React.useRef(Boolean(viewState && (
+    viewState.profileOverride || viewState.appliedFilterId ||
+    (viewState.selectedProtocols?.length ?? 0) > 0 ||
+    (viewState.selectedLinkTypes?.length ?? 0) > 0 || viewState.search
+  )));
 
   // Open the capture in its detected format once per loaded trace.
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || restoredView.current) return;
     const focus = resolveProtocols(profile.focusProtocols);
     if (focus.length === 0 || focus.length === protocolFacets.length) return;
     setSelectedProtocols(focus);
@@ -269,24 +275,69 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
     });
     // Re-runs only when a different capture is loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile]);
+  }, [detectedProfile]);
 
-  const applySuggested = (f: { protocols?: string[]; text?: string; label: string }) => {
+  // Report the current view so it can be stored with the capture.
+  useEffect(() => {
+    onViewStateChange?.({
+      profileOverride,
+      appliedFilterId,
+      selectedProtocols,
+      selectedLinkTypes,
+      search: filter,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileOverride, appliedFilterId, selectedProtocols, selectedLinkTypes, filter]);
+
+  const applySuggested = (f: { id?: string; protocols?: string[]; text?: string; label: string }) => {
+    restoredView.current = true;
     setSelectedProtocols(resolveProtocols(f.protocols));
     setFilter(f.text || '');
+    setAppliedFilterId(f.id ?? null);
     setAutoApplied(null);
     toast({ title: 'Filter applied', description: f.label });
   };
 
+  /** Switches the capture to another supported view (manual override). */
+  const changeProfile = (name: string) => {
+    restoredView.current = true;
+    setAppliedFilterId(null);
+    if (name === '__auto__') {
+      setProfileOverride(null);
+      const focus = resolveProtocols(detectedProfile?.focusProtocols ?? []);
+      setSelectedProtocols(focus);
+      setFilter('');
+      toast({
+        title: 'Back to auto-detection',
+        description: detectedProfile ? `Showing ${detectedProfile.name}.` : 'No trace type detected.',
+      });
+      return;
+    }
+    setProfileOverride(name);
+    const next = getTraceProfileByName(safePackets, name);
+    const focus = resolveProtocols(next?.focusProtocols ?? []);
+    setSelectedProtocols(focus);
+    setFilter('');
+    toast({
+      title: `Switched to ${name}`,
+      description: focus.length
+        ? `Showing ${focus.join(', ')}.`
+        : 'No frames of this type were decoded in this capture.',
+    });
+  };
+
   const showEverything = () => {
+    restoredView.current = true;
     setSelectedProtocols([]);
     setSelectedLinkTypes([]);
     setFilter('');
+    setAppliedFilterId(null);
     setAutoApplied(null);
   };
 
   const toggleValue = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
 
 
   // Filter packets based on search term and filters - memoized for performance
