@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { migrateViewState } from '@/utils/viewState';
+
 
 const BUCKET = 'captures';
 
