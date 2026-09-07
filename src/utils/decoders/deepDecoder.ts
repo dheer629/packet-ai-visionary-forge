@@ -6,12 +6,17 @@
  * never invents field values.
  */
 
+/** Byte range of a single decoded field: [offset, length] inside the frame. */
+export type FieldOffsets = Record<string, [number, number]>;
+
 export interface DecodedLayer {
   name: string;
   /** Byte offset of this layer inside the frame (evidence for the UI). */
   offset: number;
   length?: number;
   fields: Record<string, string | number>;
+  /** Byte range for individual fields, when the header layout is fixed. */
+  fieldOffsets?: FieldOffsets;
 }
 
 export interface DecodeResult {
