@@ -11,15 +11,16 @@ import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
 import { detectTraceProfile, listTraceProfiles, getTraceProfileByName } from '@/utils/traceProfile';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  migrateViewState,
+  hasStoredView,
+  withViewStateVersion,
+  type PacketViewState,
+} from '@/utils/viewState';
 
-/** View settings persisted alongside a saved capture. */
-export interface PacketViewState {
-  profileOverride?: string | null;
-  appliedFilterId?: string | null;
-  selectedProtocols?: string[];
-  selectedLinkTypes?: string[];
-  search?: string;
-}
+/** View settings persisted alongside a saved capture (versioned schema). */
+export type { PacketViewState };
+
 
 interface EnhancedPacketListProps {
   packets: any[];
@@ -42,11 +43,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
   onViewStateChange,
 }) => {
   const { toast } = useToast();
-  const [selectedProtocols, setSelectedProtocols] = useState<string[]>(viewState?.selectedProtocols ?? []);
-  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>(viewState?.selectedLinkTypes ?? []);
-  const [filter, setFilter] = useState(viewState?.search ?? '');
-  const [profileOverride, setProfileOverride] = useState<string | null>(viewState?.profileOverride ?? null);
-  const [appliedFilterId, setAppliedFilterId] = useState<string | null>(viewState?.appliedFilterId ?? null);
+  // Older saved captures are migrated to the current view-state schema.
+  const storedView = React.useMemo(() => migrateViewState(viewState), [viewState]);
+  const [selectedProtocols, setSelectedProtocols] = useState<string[]>(storedView?.selectedProtocols ?? []);
+  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>(storedView?.selectedLinkTypes ?? []);
+  const [filter, setFilter] = useState(storedView?.search ?? '');
+  const [profileOverride, setProfileOverride] = useState<string | null>(storedView?.profileOverride ?? null);
+  const [appliedFilterId, setAppliedFilterId] = useState<string | null>(storedView?.appliedFilterId ?? null);
+
   const [selectedPacket, setSelectedPacket] = useState<any>(null);
 
   const [showFilters, setShowFilters] = useState(false);
@@ -256,11 +260,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
 
   const [autoApplied, setAutoApplied] = useState<string | null>(null);
   // A restored view (saved capture) must not be overwritten by auto-detection.
-  const restoredView = React.useRef(Boolean(viewState && (
-    viewState.profileOverride || viewState.appliedFilterId ||
-    (viewState.selectedProtocols?.length ?? 0) > 0 ||
-    (viewState.selectedLinkTypes?.length ?? 0) > 0 || viewState.search
-  )));
+  const restoredView = React.useRef(hasStoredView(storedView));
 
   // Open the capture in its detected format once per loaded trace.
   useEffect(() => {
@@ -279,15 +279,16 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
 
   // Report the current view so it can be stored with the capture.
   useEffect(() => {
-    onViewStateChange?.({
+    onViewStateChange?.(withViewStateVersion({
       profileOverride,
       appliedFilterId,
       selectedProtocols,
       selectedLinkTypes,
       search: filter,
-    });
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileOverride, appliedFilterId, selectedProtocols, selectedLinkTypes, filter]);
+
 
   const applySuggested = (f: { id?: string; protocols?: string[]; text?: string; label: string }) => {
     restoredView.current = true;

@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { migrateViewState } from '@/utils/viewState';
+
 
 const BUCKET = 'captures';
 
@@ -60,8 +62,14 @@ export const listCaptures = async (): Promise<SavedCapture[]> => {
 export const loadCapture = async (capture: SavedCapture): Promise<any> => {
   const { data, error } = await supabase.storage.from(BUCKET).download(capture.storage_path);
   if (error) throw new Error(error.message);
-  return JSON.parse(await data.text());
+  const analysis = JSON.parse(await data.text());
+  // Captures saved by older versions keep working: their view is migrated.
+  if (analysis && typeof analysis === 'object' && analysis.viewState) {
+    analysis.viewState = migrateViewState(analysis.viewState);
+  }
+  return analysis;
 };
+
 
 export const deleteCapture = async (capture: SavedCapture): Promise<void> => {
   await supabase.storage.from(BUCKET).remove([capture.storage_path]);
