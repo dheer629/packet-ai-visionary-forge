@@ -101,7 +101,7 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
               )}
 
               {packet.vlan && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="802.1Q VLAN Header"
@@ -110,11 +110,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Priority', packet.vlan.priority],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.ip && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="IP Header"
@@ -127,11 +127,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Destination', packet.ip.destination],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.ipv6 && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="IPv6 Header"
@@ -144,11 +144,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Destination', packet.ipv6.destination],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.tcp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="TCP Header"
@@ -161,11 +161,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Window Size', packet.tcp.window],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.udp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="UDP Header"
@@ -175,11 +175,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Length', packet.udp.length],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.icmp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="ICMP Header"
@@ -189,11 +189,11 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Description', packet.icmp.typeName],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {packet.arp && (
-                <>
+                <div>
                   <Separator className="bg-cyber-border" />
                   <HeaderBlock
                     title="ARP Header"
@@ -205,7 +205,7 @@ const PacketDetails: React.FC<PacketDetailsProps> = ({ packet, onClose }) => {
                       ['Target IP', packet.arp.targetIP],
                     ]}
                   />
-                </>
+                </div>
               )}
 
               {!packet.ethernet && !packet.ip && !packet.ipv6 && !packet.tcp && !packet.udp && !packet.icmp && !packet.arp && (
