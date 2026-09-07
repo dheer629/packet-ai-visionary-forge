@@ -504,18 +504,22 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
  * Parse PCAP-NG format files
  * This is a simplified implementation as PCAP-NG is much more complex
  */
-const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void, control?: DecodeController): Promise<any> => {
+const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename: string, progressCallback?: (progress: number) => void, control?: DecodeController, options?: DecodeOptions): Promise<any> => {
   console.log('Detected PCAP-NG format, processing block structure');
   
-  // PCAP-NG variables
-  const packets: any[] = [];
+  // PCAP-NG variables — seeded from a checkpoint when resuming
+  const resumedPackets = Array.isArray(options?.resume?.packets) ? options!.resume!.packets : [];
+  const packets: any[] = [...resumedPackets];
   const ipAddresses = new Set<string>();
   const protocolCounts: Record<string, number> = {};
   const conversations = new Map();
   const packetSizes: number[] = [];
-  let minTimestamp = Number.MAX_VALUE;
-  let maxTimestamp = 0;
-  let interfaceDescriptions: any[] = [];
+  const replayed = replayStats(packets, ipAddresses, protocolCounts, conversations, packetSizes);
+  let minTimestamp = replayed.minTimestamp;
+  let maxTimestamp = replayed.maxTimestamp;
+  let interfaceDescriptions: any[] = Array.isArray(options?.resume?.interfaces)
+    ? [...options!.resume!.interfaces!]
+    : [];
   let pendingGate = false;
   
   // Block Type values
@@ -524,9 +528,15 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
   const EPB_TYPE = 0x00000006; // Enhanced Packet Block
   const SPB_TYPE = 0x00000003; // Simple Packet Block
   
-  // Parse PCAP-NG blocks
-  let offset = 0;
-  let packetCount = 0;
+  // Parse PCAP-NG blocks (block boundaries make resuming safe)
+  let offset = resumedPackets.length > 0 && options?.resume?.offset ? options.resume.offset : 0;
+  let packetCount = packets.length;
+  let lastCheckpointedCount = packets.length;
+
+  if (packetCount > 0) {
+    console.log(`Resuming PCAP-NG decode from byte ${offset} with ${packetCount} checkpointed packets`);
+  }
+
   
   try {
     while (offset + 12 <= dataView.byteLength) {
