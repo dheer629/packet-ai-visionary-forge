@@ -394,7 +394,11 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
       }
     }
       
+    // Decode finished: the checkpoint is no longer needed.
+    await options?.checkpoint?.clear?.();
+
     console.log(`Finished processing ${packetCount} packets`);
+
     console.log(`Detected IP addresses: ${Array.from(ipAddresses).join(', ')}`);
     console.log(`Detected protocols: ${Object.keys(protocolCounts).join(', ')}`);
     console.log(`Conversation count: ${conversations.size}`);
