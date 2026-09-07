@@ -35,7 +35,10 @@ const rowProtocols = () =>
     .map((r) => within(r).getAllByRole('cell')[4]?.textContent?.trim())
     .filter(Boolean);
 
-const renderList = (viewState: PacketViewState | null, onChange = vi.fn()) =>
+const renderList = (
+  viewState: PacketViewState | null,
+  onChange: (s: PacketViewState) => void = () => {},
+) =>
   render(
     <EnhancedPacketList
       packets={packets}
