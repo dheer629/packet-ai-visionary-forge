@@ -44,31 +44,31 @@ const hasMarker = (names: string[], markers: string[]) =>
 const RULES: ProfileRule[] = [
   {
     name: 'Telecom packet core (GTP / PFCP)',
-    markers: ['GTP', 'GTP-U', 'GTP-C', 'GTPV1', 'GTPV2', 'PFCP'],
-    filters: (match) => match(
+    markers: ['GTP', 'PFCP'],
+    filters: (match) => [
       {
         id: 'gtp-user',
         label: 'GTP-U user plane',
         description: 'Only tunnelled subscriber traffic.',
-        protocols: ['GTP-U', 'GTP', 'GTPv1'),
+        protocols: match('GTPv1-U', 'GTP-U'),
       },
       {
         id: 'gtp-control',
         label: 'GTP-C / PFCP signalling',
         description: 'Session create, modify and delete messages.',
-        protocols: match('GTP-C', 'GTPv2', 'PFCP'),
+        protocols: match('GTPv2', 'GTP-C', 'PFCP'),
       },
     ],
   },
   {
     name: 'Telecom signalling (Diameter / S1AP / NGAP)',
     markers: ['DIAMETER', 'S1AP', 'NGAP', 'M3UA', 'SCTP'],
-    filters: (match) => match(
+    filters: (match) => [
       {
         id: 'sig-diameter',
         label: 'Diameter only',
         description: 'Authentication and policy exchanges.',
-        protocols: ['Diameter'),
+        protocols: match('Diameter'),
       },
       {
         id: 'sig-ran',
@@ -80,33 +80,33 @@ const RULES: ProfileRule[] = [
         id: 'sig-sctp',
         label: 'SCTP transport',
         description: 'The transport carrying the signalling.',
-        protocols: match('SCTP'),
+        protocols: match('SCTP', 'M3UA'),
       },
     ],
   },
   {
     name: 'Voice / SIP',
     markers: ['SIP', 'RTP', 'RTCP'],
-    filters: (match) => match(
-      { id: 'voice-sip', label: 'SIP signalling', description: 'Call setup and teardown.', protocols: ['SIP') },
+    filters: (match) => [
+      { id: 'voice-sip', label: 'SIP signalling', description: 'Call setup and teardown.', protocols: match('SIP') },
       { id: 'voice-media', label: 'RTP media', description: 'Voice or video media streams.', protocols: match('RTP', 'RTCP') },
     ],
   },
   {
     name: 'Web traffic (HTTP / TLS)',
-    markers: ['HTTP', 'HTTPS', 'TLS', 'TLSV1', 'TLSV1.2', 'TLSV1.3', 'QUIC'],
-    filters: (match) => match(
+    markers: ['HTTP', 'TLS', 'QUIC'],
+    filters: (match) => [
       {
         id: 'web-http',
         label: 'HTTP requests',
         description: 'Plaintext web requests and responses.',
-        protocols: ['HTTP'),
+        protocols: match('HTTP'),
       },
       {
         id: 'web-tls',
         label: 'TLS / HTTPS',
         description: 'Encrypted web sessions and handshakes.',
-        protocols: match('HTTPS', 'TLS', 'TLSv1', 'TLSv1.2', 'TLSv1.3', 'QUIC'),
+        protocols: match('TLS', 'HTTPS', 'QUIC'),
       },
       { id: 'web-errors', label: 'Resets only', description: 'Connections torn down with RST.', text: 'RST' },
     ],
@@ -121,14 +121,15 @@ const RULES: ProfileRule[] = [
   },
   {
     name: 'Network services (DHCP / ARP / ICMP)',
-    markers: ['DHCP', 'BOOTP', 'ARP', 'ICMP', 'ICMPV6', 'IGMP', 'NTP'],
-    filters: (match) => match(
-      { id: 'svc-arp', label: 'ARP only', description: 'Address resolution on the local segment.', protocols: ['ARP') },
-      { id: 'svc-icmp', label: 'ICMP only', description: 'Reachability and error reports.', protocols: match('ICMP', 'ICMPv6') },
+    markers: ['DHCP', 'BOOTP', 'ARP', 'ICMP', 'IGMP', 'NTP'],
+    filters: (match) => [
+      { id: 'svc-arp', label: 'ARP only', description: 'Address resolution on the local segment.', protocols: match('ARP') },
+      { id: 'svc-icmp', label: 'ICMP only', description: 'Reachability and error reports.', protocols: match('ICMP') },
       { id: 'svc-dhcp', label: 'DHCP only', description: 'Address leases and renewals.', protocols: match('DHCP', 'BOOTP') },
     ],
   },
 ];
+
 
 export function detectTraceProfile(packets: any[]): TraceProfile | null {
   if (!Array.isArray(packets) || packets.length === 0) return null;
