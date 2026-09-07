@@ -375,8 +375,17 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         // Log progress occasionally
         if (packetCount % 1000 === 0) {
           progressCallback?.(0.3 + 0.7 * Math.min(offset / Math.max(fileSize, 1), 1));
+          if (options?.checkpoint) {
+            await options.checkpoint.save({
+              offset,
+              packetCount,
+              newPackets: packets.slice(lastCheckpointedCount),
+            });
+            lastCheckpointedCount = packets.length;
+          }
           if (control) await control.gate();
         }
+
       } catch (error) {
         if (isDecodeCancelled(error)) throw error;
         console.error(`Error parsing packet at offset ${offset}:`, error);
