@@ -9,22 +9,46 @@ import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
 import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
-import { detectTraceProfile } from '@/utils/traceProfile';
+import { detectTraceProfile, listTraceProfiles, getTraceProfileByName } from '@/utils/traceProfile';
 import { useToast } from '@/components/ui/use-toast';
+
+/** View settings persisted alongside a saved capture. */
+export interface PacketViewState {
+  profileOverride?: string | null;
+  appliedFilterId?: string | null;
+  selectedProtocols?: string[];
+  selectedLinkTypes?: string[];
+  search?: string;
+}
 
 interface EnhancedPacketListProps {
   packets: any[];
   filename?: string;
   captureSize?: number;
   summary?: Record<string, unknown>;
+  /** Previously saved view, restored when a stored capture is reopened. */
+  viewState?: PacketViewState | null;
+  /** Called whenever the view changes so it can be saved with the capture. */
+  onViewStateChange?: (state: PacketViewState) => void;
 }
 
-const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], filename, captureSize, summary }) => {
+
+const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
+  packets = [],
+  filename,
+  captureSize,
+  summary,
+  viewState,
+  onViewStateChange,
+}) => {
   const { toast } = useToast();
-  const [selectedProtocols, setSelectedProtocols] = useState<string[]>([]);
-  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>([]);
-  const [filter, setFilter] = useState('');
+  const [selectedProtocols, setSelectedProtocols] = useState<string[]>(viewState?.selectedProtocols ?? []);
+  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>(viewState?.selectedLinkTypes ?? []);
+  const [filter, setFilter] = useState(viewState?.search ?? '');
+  const [profileOverride, setProfileOverride] = useState<string | null>(viewState?.profileOverride ?? null);
+  const [appliedFilterId, setAppliedFilterId] = useState<string | null>(viewState?.appliedFilterId ?? null);
   const [selectedPacket, setSelectedPacket] = useState<any>(null);
+
   const [showFilters, setShowFilters] = useState(false);
   const [filterOptions, setFilterOptions] = useState({
     protocol: '',
@@ -200,8 +224,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
   }, [safePackets]);
 
   // Auto-detected trace profile (what kind of capture this is) plus the
-  // ready-to-use filters that suit it.
-  const profile = useMemo(() => detectTraceProfile(safePackets), [safePackets]);
+  // ready-to-use filters that suit it. A user override wins over detection.
+  const detectedProfile = useMemo(() => detectTraceProfile(safePackets), [safePackets]);
+  const profileOptions = useMemo(() => listTraceProfiles(safePackets), [safePackets]);
+  const profile = useMemo(
+    () => (profileOverride ? getTraceProfileByName(safePackets, profileOverride) : detectedProfile),
+    [profileOverride, safePackets, detectedProfile],
+  );
+
 
   /** Every protocol name present in the capture, including tunnelled layers. */
   const allProtocolNames = useMemo(() => {
@@ -225,10 +255,16 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
 
 
   const [autoApplied, setAutoApplied] = useState<string | null>(null);
+  // A restored view (saved capture) must not be overwritten by auto-detection.
+  const restoredView = React.useRef(Boolean(viewState && (
+    viewState.profileOverride || viewState.appliedFilterId ||
+    (viewState.selectedProtocols?.length ?? 0) > 0 ||
+    (viewState.selectedLinkTypes?.length ?? 0) > 0 || viewState.search
+  )));
 
   // Open the capture in its detected format once per loaded trace.
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || restoredView.current) return;
     const focus = resolveProtocols(profile.focusProtocols);
     if (focus.length === 0 || focus.length === protocolFacets.length) return;
     setSelectedProtocols(focus);
@@ -239,24 +275,69 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
     });
     // Re-runs only when a different capture is loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile]);
+  }, [detectedProfile]);
 
-  const applySuggested = (f: { protocols?: string[]; text?: string; label: string }) => {
+  // Report the current view so it can be stored with the capture.
+  useEffect(() => {
+    onViewStateChange?.({
+      profileOverride,
+      appliedFilterId,
+      selectedProtocols,
+      selectedLinkTypes,
+      search: filter,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileOverride, appliedFilterId, selectedProtocols, selectedLinkTypes, filter]);
+
+  const applySuggested = (f: { id?: string; protocols?: string[]; text?: string; label: string }) => {
+    restoredView.current = true;
     setSelectedProtocols(resolveProtocols(f.protocols));
     setFilter(f.text || '');
+    setAppliedFilterId(f.id ?? null);
     setAutoApplied(null);
     toast({ title: 'Filter applied', description: f.label });
   };
 
+  /** Switches the capture to another supported view (manual override). */
+  const changeProfile = (name: string) => {
+    restoredView.current = true;
+    setAppliedFilterId(null);
+    if (name === '__auto__') {
+      setProfileOverride(null);
+      const focus = resolveProtocols(detectedProfile?.focusProtocols ?? []);
+      setSelectedProtocols(focus);
+      setFilter('');
+      toast({
+        title: 'Back to auto-detection',
+        description: detectedProfile ? `Showing ${detectedProfile.name}.` : 'No trace type detected.',
+      });
+      return;
+    }
+    setProfileOverride(name);
+    const next = getTraceProfileByName(safePackets, name);
+    const focus = resolveProtocols(next?.focusProtocols ?? []);
+    setSelectedProtocols(focus);
+    setFilter('');
+    toast({
+      title: `Switched to ${name}`,
+      description: focus.length
+        ? `Showing ${focus.join(', ')}.`
+        : 'No frames of this type were decoded in this capture.',
+    });
+  };
+
   const showEverything = () => {
+    restoredView.current = true;
     setSelectedProtocols([]);
     setSelectedLinkTypes([]);
     setFilter('');
+    setAppliedFilterId(null);
     setAutoApplied(null);
   };
 
   const toggleValue = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
 
 
   // Filter packets based on search term and filters - memoized for performance
@@ -464,14 +545,38 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
         <div className="mb-4 rounded-md border border-cyber-border bg-blue-50/60 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-medium text-blue-900">Detected trace type: {profile.name}</p>
+              <p className="text-sm font-medium text-blue-900">
+                {profileOverride ? 'Trace view (manual):' : 'Detected trace type:'} {profile.name}
+              </p>
               <p className="text-xs text-blue-800/80">{profile.reason}</p>
             </div>
-            <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={showEverything}>
-              Show all frames
-            </Button>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-blue-900/70" htmlFor="trace-profile-select">
+                View as
+              </label>
+              <select
+                id="trace-profile-select"
+                aria-label="Trace view"
+                className="h-7 rounded-md border border-cyber-border bg-white px-2 text-[11px]"
+                value={profileOverride ?? '__auto__'}
+                onChange={(e) => changeProfile(e.target.value)}
+              >
+                <option value="__auto__">
+                  Auto-detected{detectedProfile ? ` (${detectedProfile.name})` : ''}
+                </option>
+                {profileOptions.map((o) => (
+                  <option key={o.name} value={o.name}>
+                    {o.name}
+                    {o.available ? '' : ' — not present'}
+                  </option>
+                ))}
+              </select>
+              <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={showEverything}>
+                Show all frames
+              </Button>
+            </div>
           </div>
-          {autoApplied && (
+          {autoApplied && !profileOverride && (
             <p className="mt-1 text-[11px] text-blue-800/70">
               Opened with the matching view applied automatically.
             </p>
@@ -482,9 +587,9 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
               {profile.filters.map((f) => (
                 <Button
                   key={f.id}
-                  variant="outline"
+                  variant={appliedFilterId === f.id ? 'default' : 'outline'}
                   size="sm"
-                  className="h-7 bg-white text-[11px]"
+                  className={`h-7 text-[11px] ${appliedFilterId === f.id ? '' : 'bg-white'}`}
                   title={f.description}
                   onClick={() => applySuggested(f)}
                 >
@@ -495,6 +600,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
           )}
         </div>
       )}
+
 
 
       {(protocolFacets.length > 0 || linkTypeFacets.length > 0) && (

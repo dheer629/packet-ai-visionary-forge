@@ -130,8 +130,16 @@ const RULES: ProfileRule[] = [
   },
 ];
 
+interface Evidence {
+  names: string[];
+  match: (...names: string[]) => string[];
+  ranked: [string, number][];
+  linkTypes: string[];
+  total: number;
+}
 
-export function detectTraceProfile(packets: any[]): TraceProfile | null {
+/** Collects the protocol / link-layer evidence actually present in the capture. */
+function collectEvidence(packets: any[]): Evidence | null {
   if (!Array.isArray(packets) || packets.length === 0) return null;
 
   const counts = new Map<string, number>();
@@ -155,39 +163,51 @@ export function detectTraceProfile(packets: any[]): TraceProfile | null {
   if (counts.size === 0) return null;
 
   const names = Array.from(counts.keys());
-  const match = (...wanted: string[]) =>
-    names.filter((n) => wanted.some((w) => n.toUpperCase().startsWith(w.toUpperCase())));
-  const ranked = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  const linkTypes = Array.from(linkSet);
+  return {
+    names,
+    match: (...wanted: string[]) =>
+      names.filter((n) => wanted.some((w) => n.toUpperCase().startsWith(w.toUpperCase()))),
+    ranked: Array.from(counts.entries()).sort((a, b) => b[1] - a[1]),
+    linkTypes: Array.from(linkSet),
+    total: packets.length,
+  };
+}
 
-  const matched = RULES.find((rule) => hasMarker(names, rule.markers));
+function buildRuleProfile(rule: ProfileRule, ev: Evidence, detected: boolean): TraceProfile {
+  const filters = rule.filters(ev.match).filter((f) => (f.protocols?.length ?? 0) > 0 || f.text);
+  // Prefer the first filter's protocols; otherwise focus on the protocols that
+  // identify this profile and were actually decoded here.
+  const markerMatches = ev.match(...rule.markers);
+  const focus = filters[0]?.protocols?.length
+    ? filters[0].protocols
+    : markerMatches.length
+      ? markerMatches
+      : [ev.ranked[0][0]];
 
-  if (matched) {
-    const filters = matched.filters(match).filter((f) => (f.protocols?.length ?? 0) > 0 || f.text);
-    const focus = filters[0]?.protocols?.length ? filters[0].protocols : [ranked[0][0]];
-    const evidence = Array.from(
-      new Set(matched.markers.flatMap((m) => match(m))),
-    ).slice(0, 3).join(', ');
-    return {
-      name: matched.name,
-      reason: `Detected from ${evidence} in the decoded frames${linkTypes.length ? ` over ${linkTypes.join(', ')}` : ''}.`,
-      focusProtocols: focus,
-      linkTypes,
-      filters,
-    };
-  }
+  const evidence = Array.from(new Set(rule.markers.flatMap((m) => ev.match(m)))).slice(0, 3).join(', ');
+  return {
+    name: rule.name,
+    reason: evidence
+      ? `${detected ? 'Detected' : 'Selected'} from ${evidence} in the decoded frames${
+          ev.linkTypes.length ? ` over ${ev.linkTypes.join(', ')}` : ''
+        }.`
+      : `No ${rule.name} protocols were decoded in this capture.`,
+    focusProtocols: focus,
+    linkTypes: ev.linkTypes,
+    filters,
+  };
+}
 
-  // No specialised profile: fall back to the dominant protocols actually seen.
-  const top = ranked.slice(0, 3).filter(([name]) => name !== 'Unknown');
+function buildGeneralProfile(ev: Evidence): TraceProfile | null {
+  const top = ev.ranked.slice(0, 3).filter(([name]) => name !== 'Unknown');
   if (top.length === 0) return null;
-
   return {
     name: `General IP traffic (${top[0][0]} dominant)`,
-    reason: `${top[0][1]} of ${packets.length} frames decoded as ${top[0][0]}${
-      linkTypes.length ? ` over ${linkTypes.join(', ')}` : ''
+    reason: `${top[0][1]} of ${ev.total} frames decoded as ${top[0][0]}${
+      ev.linkTypes.length ? ` over ${ev.linkTypes.join(', ')}` : ''
     }.`,
     focusProtocols: [top[0][0]],
-    linkTypes,
+    linkTypes: ev.linkTypes,
     filters: top.map(([name, count]) => ({
       id: `top-${name}`,
       label: `${name} only`,
@@ -196,3 +216,36 @@ export function detectTraceProfile(packets: any[]): TraceProfile | null {
     })),
   };
 }
+
+export function detectTraceProfile(packets: any[]): TraceProfile | null {
+  const ev = collectEvidence(packets);
+  if (!ev) return null;
+  const matched = RULES.find((rule) => hasMarker(ev.names, rule.markers));
+  return matched ? buildRuleProfile(matched, ev, true) : buildGeneralProfile(ev);
+}
+
+/**
+ * Every view the user can switch to for this capture. Views whose protocols
+ * were not decoded here are still listed but flagged as unavailable, so the
+ * override never pretends data exists.
+ */
+export function listTraceProfiles(
+  packets: any[],
+): { name: string; available: boolean; profile: TraceProfile }[] {
+  const ev = collectEvidence(packets);
+  if (!ev) return [];
+  const options = RULES.map((rule) => ({
+    name: rule.name,
+    available: hasMarker(ev.names, rule.markers),
+    profile: buildRuleProfile(rule, ev, false),
+  }));
+  const general = buildGeneralProfile(ev);
+  if (general) options.push({ name: general.name, available: true, profile: general });
+  return options;
+}
+
+/** Rebuilds a specific view by name (used when the user overrides detection). */
+export function getTraceProfileByName(packets: any[], name: string): TraceProfile | null {
+  return listTraceProfiles(packets).find((o) => o.name === name)?.profile ?? null;
+}
+
