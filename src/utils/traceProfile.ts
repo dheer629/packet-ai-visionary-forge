@@ -175,7 +175,15 @@ function collectEvidence(packets: any[]): Evidence | null {
 
 function buildRuleProfile(rule: ProfileRule, ev: Evidence, detected: boolean): TraceProfile {
   const filters = rule.filters(ev.match).filter((f) => (f.protocols?.length ?? 0) > 0 || f.text);
-  const focus = filters[0]?.protocols?.length ? filters[0].protocols : [ev.ranked[0][0]];
+  // Prefer the first filter's protocols; otherwise focus on the protocols that
+  // identify this profile and were actually decoded here.
+  const markerMatches = ev.match(...rule.markers);
+  const focus = filters[0]?.protocols?.length
+    ? filters[0].protocols
+    : markerMatches.length
+      ? markerMatches
+      : [ev.ranked[0][0]];
+
   const evidence = Array.from(new Set(rule.markers.flatMap((m) => ev.match(m)))).slice(0, 3).join(', ');
   return {
     name: rule.name,
