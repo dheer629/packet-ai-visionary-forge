@@ -244,11 +244,18 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
         
         <TabsContent value="packets" className="mt-4">
           <EnhancedPacketList
+            key={safeData.filename}
             packets={safeData.packets}
             filename={safeData.filename}
             captureSize={safeData.size}
             summary={safeData.summary}
+            viewState={data.viewState ?? null}
+            onViewStateChange={(state) => {
+              // Stored on the analysis object so it is saved with the capture.
+              data.viewState = state;
+            }}
           />
+
         </TabsContent>
         
         <TabsContent value="conversations" className="mt-4">
