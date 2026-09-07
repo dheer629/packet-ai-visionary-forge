@@ -43,11 +43,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
   onViewStateChange,
 }) => {
   const { toast } = useToast();
-  const [selectedProtocols, setSelectedProtocols] = useState<string[]>(viewState?.selectedProtocols ?? []);
-  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>(viewState?.selectedLinkTypes ?? []);
-  const [filter, setFilter] = useState(viewState?.search ?? '');
-  const [profileOverride, setProfileOverride] = useState<string | null>(viewState?.profileOverride ?? null);
-  const [appliedFilterId, setAppliedFilterId] = useState<string | null>(viewState?.appliedFilterId ?? null);
+  // Older saved captures are migrated to the current view-state schema.
+  const storedView = React.useMemo(() => migrateViewState(viewState), [viewState]);
+  const [selectedProtocols, setSelectedProtocols] = useState<string[]>(storedView?.selectedProtocols ?? []);
+  const [selectedLinkTypes, setSelectedLinkTypes] = useState<string[]>(storedView?.selectedLinkTypes ?? []);
+  const [filter, setFilter] = useState(storedView?.search ?? '');
+  const [profileOverride, setProfileOverride] = useState<string | null>(storedView?.profileOverride ?? null);
+  const [appliedFilterId, setAppliedFilterId] = useState<string | null>(storedView?.appliedFilterId ?? null);
+
   const [selectedPacket, setSelectedPacket] = useState<any>(null);
 
   const [showFilters, setShowFilters] = useState(false);
