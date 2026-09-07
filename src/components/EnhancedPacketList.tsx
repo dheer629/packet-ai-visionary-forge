@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search, Filter, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
-import { downloadPacketExport } from '@/utils/exportPackets';
+import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -296,6 +296,14 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
     });
   };
 
+  const handleExportCsv = () => {
+    const count = downloadPacketCsv(filteredPackets, { filename, size: captureSize, summary });
+    toast({
+      title: 'Export ready',
+      description: `Downloaded ${count} decoded packet summaries as CSV.`,
+    });
+  };
+
   // Get paginated packets to display
   const displayedPackets = useMemo(() => {
     const start = page * pageSize;
@@ -356,6 +364,16 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({ packets = [], f
             >
               <Download className="h-3 w-3 mr-1" />
               Export JSON
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={handleExportCsv}
+              disabled={filteredPackets.length === 0}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Export CSV
             </Button>
             <Button
               variant="outline"
