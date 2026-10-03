@@ -1,5 +1,15 @@
 # Roadmap
 
+## NetTracer Pro brief (new)
+- [ ] Restore reliable packet visibility for real PCAP, PCAPNG, and CAP inputs; never substitute fabricated rows or statistics.
+- [ ] Move offline parsing into a streaming Web Worker and virtualize the packet table for large captures.
+- [ ] Build the dense, resizable three-pane analyzer with filter bar, packet tree, and synchronized hex highlighting.
+- [ ] Add a validated Wireshark-style display-filter engine with autocomplete, history, saved filters, and field actions.
+- [ ] Convert decoding to a protocol-plugin registry and complete the brief's phased protocol, stream, expert, and statistics coverage.
+- [ ] Add live-agent delivery artifacts and authenticated live-capture status/streaming.
+- [ ] Add annotations, retention, filtered PCAP/object/graph exports, shareable sessions, K8s enrichment, comparisons, and AI workflows.
+- [ ] Validate with real sample captures, large-capture tests, security checks, and end-to-end saved/live workflows.
+
 ## Scope agreed with user
 - Fix AI provider connectivity ("Failed to fetch") by moving vendor calls server-side. No authentication work.
 - Broaden protocol decoder coverage ("cover all"), with honest capability reporting.
