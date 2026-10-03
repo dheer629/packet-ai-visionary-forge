@@ -111,10 +111,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
         }));
       }
     } else {
-      safeData.timeSeriesData = Array(10).fill(0).map((_, i) => ({
-        time: `${i * 10}%`,
-        value: Math.floor(Math.random() * 10) + 1 // Just for visualization purposes
-      }));
+      safeData.timeSeriesData = [];
     }
   }
 

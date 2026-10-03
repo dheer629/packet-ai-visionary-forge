@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { processPcapFile } from '../utils/pcapProcessor';
 import { useToast } from '@/components/ui/use-toast';
 import { enhancePacketData, ProcessedData } from '../utils/packetEnhancer';
-import { applyAIEnhancement, createFallbackData } from '../utils/aiEnhancement';
+import { applyAIEnhancement } from '../utils/aiEnhancement';
 import { DecodeController, isDecodeCancelled } from '../utils/decodeControl';
 import {
   CheckpointMeta,
@@ -160,7 +160,6 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
         variant: 'destructive',
       });
 
-      onFileUpload(createFallbackData(file));
     } finally {
       controllerRef.current = null;
       setIsPaused(false);

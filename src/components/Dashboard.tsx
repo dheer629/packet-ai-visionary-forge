@@ -128,15 +128,9 @@ const Dashboard = () => {
                       {ip.startsWith('192.168.') || ip.startsWith('10.') ? 'Internal' : 
                        ip === '8.8.8.8' || ip === '1.1.1.1' ? 'DNS' : 'External'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {Math.floor(Math.random() * 100) + 20}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {Math.floor(Math.random() * 100) + 20}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {(Math.random() * 300 + 50).toFixed(1)} KB
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unavailable</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unavailable</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unavailable</td>
                   </tr>
                 ))}
               </tbody>
@@ -298,7 +292,7 @@ const Dashboard = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{protocol.value}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {(protocol.value * (500 + Math.random() * 500) / 1024).toFixed(1)} KB
+                      Unavailable
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {((protocol.value / analysisData?.summary?.totalPackets || 0) * 100).toFixed(1)}%
@@ -331,8 +325,7 @@ const Dashboard = () => {
                 <div className="flex justify-between">
                   <span>Layer 7 (Application):</span>
                   <span className="font-mono">
-                    {Math.floor((analysisData?.summary?.totalPackets || 0) * 0.5)} 
-                    ({Math.round(0.5 * 100)}%)
+                    Unavailable
                   </span>
                 </div>
               </div>

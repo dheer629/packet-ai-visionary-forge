@@ -262,16 +262,15 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
   // A restored view (saved capture) must not be overwritten by auto-detection.
   const restoredView = React.useRef(hasStoredView(storedView));
 
-  // Open the capture in its detected format once per loaded trace.
+  // Announce the detected format once per loaded trace. Suggested filters are
+  // opt-in so auto-detection can never hide every decoded frame.
   useEffect(() => {
     if (!profile || restoredView.current) return;
     const focus = resolveProtocols(profile.focusProtocols);
-    if (focus.length === 0 || focus.length === protocolFacets.length) return;
-    setSelectedProtocols(focus);
-    setAutoApplied(profile.name);
+    if (focus.length === 0) return;
     toast({
-      title: `Opened as ${profile.name}`,
-      description: `${profile.reason} Showing ${focus.join(', ')} — pick another ready-made filter or show all frames.`,
+      title: `${profile.name} trace detected`,
+      description: `${profile.reason} Ready-to-use filters are available; all frames remain visible.`,
     });
     // Re-runs only when a different capture is loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -577,11 +576,6 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
               </Button>
             </div>
           </div>
-          {autoApplied && !profileOverride && (
-            <p className="mt-1 text-[11px] text-blue-800/70">
-              Opened with the matching view applied automatically.
-            </p>
-          )}
           {profile.filters.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-blue-900/70 mr-1">Ready-to-use filters:</span>
@@ -716,8 +710,11 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
                 </TableRow>
               ) : displayedPackets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-4 text-cyber-foreground/50">
-                    No packets match the current filters
+                  <TableCell colSpan={7} className="py-6 text-center text-cyber-foreground/60">
+                    <p>No packets match the current filters.</p>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={showEverything}>
+                      Clear filters and show all {safePackets.length.toLocaleString()} frames
+                    </Button>
                   </TableCell>
                 </TableRow>
               ) : (

@@ -538,18 +538,6 @@ const decodeBasicPacketFields = (enhancedPacket: any, packet: any) => {
   return enhancedPacket;
 };
 
-const createDefaultPacket = (index: number) => {
-  return {
-    number: index + 1,
-    time: (index * 0.001).toFixed(6),
-    source: 'Unknown',
-    destination: 'Unknown',
-    protocol: 'Unknown',
-    length: 78,
-    info: 'Missing Packet Data'
-  };
-};
-
 // Generate summary data from packets
 const generateSummaryData = (analysisData: any): ProcessedData => {
   const uniqueIPs = new Set<string>();

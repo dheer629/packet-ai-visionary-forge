@@ -249,6 +249,10 @@ export const processPcapFile = async (
  */
 const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progressCallback?: (progress: number) => void, control?: DecodeController, options?: DecodeOptions): Promise<any> => {
 
+  if (buffer.byteLength < 12) {
+    throw new Error('Capture is too short to contain a PCAP or PCAP-NG header');
+  }
+
   // Create a DataView to read binary data
   const dataView = new DataView(buffer);
   const fileSize = buffer.byteLength;
@@ -276,6 +280,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     
     if (isPcapNg) {
       return await parsePcapNgFormat(dataView, fileSize, filename, progressCallback, control, options);
+    }
+
+    if (buffer.byteLength < 24) {
+      throw new Error('Capture is too short to contain a complete PCAP header');
     }
     
     // Parse standard PCAP format
@@ -575,6 +583,11 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
       // Validate block size
       if (blockTotalLength < 12 || offset + blockTotalLength > dataView.byteLength) {
         console.warn(`Invalid block length at offset ${offset}: ${blockTotalLength}`);
+        break;
+      }
+      const trailingLength = dataView.getUint32(offset + blockTotalLength - 4, sectionLittleEndian);
+      if (trailingLength !== blockTotalLength) {
+        console.warn(`PCAP-NG block length mismatch at offset ${offset}`);
         break;
       }
       
