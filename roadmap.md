@@ -10,6 +10,15 @@
 - [ ] Add annotations, retention, filtered PCAP/object/graph exports, shareable sessions, K8s enrichment, comparisons, and AI workflows.
 - [ ] Validate with real sample captures, large-capture tests, security checks, and end-to-end saved/live workflows.
 
+## Requested advanced analyzer expansion
+- [ ] TCP stream state, anomaly detection, Follow Stream, Expert Info, and editable coloring rules.
+- [ ] Tested HTTP/2, gRPC, QUIC, WebSocket, Kafka, Redis, PostgreSQL, and MySQL dissectors.
+- [ ] Statistics workspace: hierarchy, conversations, endpoints, I/O, service response time, and sequence flows.
+- [ ] Tested SCTP, Diameter AVPs, GTPv2-C, GTP-U, PFCP, NGAP, 5G SBI, and telecom call-flow ladders.
+- [ ] Privacy-first AI: redacted evidence, Explain Packet, capture report, natural-language filters, and scoped chat.
+- [ ] NetTracer Agent package: tshark streamer, authenticated live ingest, DaemonSet/RBAC, and ephemeral capture.
+- [ ] Kubernetes enrichment, dependency map, guided playbooks, and evidence-based capture comparison.
+
 ## Scope agreed with user
 - Fix AI provider connectivity ("Failed to fetch") by moving vendor calls server-side. No authentication work.
 - Broaden protocol decoder coverage ("cover all"), with honest capability reporting.
