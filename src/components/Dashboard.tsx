@@ -128,15 +128,9 @@ const Dashboard = () => {
                       {ip.startsWith('192.168.') || ip.startsWith('10.') ? 'Internal' : 
                        ip === '8.8.8.8' || ip === '1.1.1.1' ? 'DNS' : 'External'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {Math.floor(Math.random() * 100) + 20}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {Math.floor(Math.random() * 100) + 20}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {(Math.random() * 300 + 50).toFixed(1)} KB
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unavailable</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unavailable</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Unavailable</td>
                   </tr>
                 ))}
               </tbody>
@@ -171,19 +165,19 @@ const Dashboard = () => {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Top sender:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[0] || 'N/A'} (156 packets)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Top receiver:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[1] || 'N/A'} (134 packets)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Top data sender:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[2] || 'N/A'} (326.5 KB)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Top data receiver:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[0] || 'N/A'} (342.8 KB)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
               </div>
             </div>
@@ -298,7 +292,7 @@ const Dashboard = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{protocol.value}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {(protocol.value * (500 + Math.random() * 500) / 1024).toFixed(1)} KB
+                      Unavailable
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {((protocol.value / analysisData?.summary?.totalPackets || 0) * 100).toFixed(1)}%
@@ -331,8 +325,7 @@ const Dashboard = () => {
                 <div className="flex justify-between">
                   <span>Layer 7 (Application):</span>
                   <span className="font-mono">
-                    {Math.floor((analysisData?.summary?.totalPackets || 0) * 0.5)} 
-                    ({Math.round(0.5 * 100)}%)
+                    Unavailable
                   </span>
                 </div>
               </div>

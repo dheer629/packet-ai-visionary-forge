@@ -92,30 +92,3 @@ export const applyAIEnhancement = async (
   return analysisData;
 };
 
-export const createFallbackData = (file: File): ProcessedData => {
-  return {
-    packets: Array.from({ length: 10 }).map((_, idx) => ({
-      number: idx + 1,
-      time: (idx * 0.001).toFixed(6),
-      source: 'Unknown',
-      destination: 'Unknown',
-      protocol: 'Unknown',
-      length: 78,
-      info: 'Unknown Packet'
-    })),
-    summary: {
-      totalPackets: 10,
-      ipAddresses: 0,
-      conversationCount: 0,
-      startTime: '0.000000',
-      endTime: '0.010000',
-      protocolCounts: [{ protocol: 'Unknown', count: 10 }]
-    },
-    protocolData: [{ name: 'Unknown', value: 10 }],
-    timeSeriesData: Array(10).fill(0).map((_, i) => ({ time: `${i * 10}%`, value: 1 })),
-    conversations: [],
-    filename: file.name,
-    size: file.size,
-    timestamp: Date.now()
-  };
-};

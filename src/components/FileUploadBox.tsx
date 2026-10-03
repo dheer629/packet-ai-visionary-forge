@@ -64,7 +64,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({
         type="file"
         id="pcap-upload"
         className="hidden"
-        accept=".pcap,.pcapng"
+        accept=".pcap,.pcapng,.cap"
         onChange={onFileChange}
       />
       <label htmlFor="pcap-upload" className="w-full flex flex-col items-center cursor-pointer">
@@ -72,7 +72,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({
         <p className="mb-2 text-center">
           <span className="font-semibold">Click to upload</span> or drag and drop
         </p>
-        <p className="text-xs text-cyber-secondary">.pcap or .pcapng files only</p>
+        <p className="text-xs text-cyber-secondary">.pcap, .pcapng, or .cap files up to 500 MB</p>
       </label>
 
       {fileName && (
