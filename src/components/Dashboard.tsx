@@ -165,19 +165,19 @@ const Dashboard = () => {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Top sender:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[0] || 'N/A'} (156 packets)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Top receiver:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[1] || 'N/A'} (134 packets)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Top data sender:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[2] || 'N/A'} (326.5 KB)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Top data receiver:</span>
-                  <span className="font-mono">{analysisData?.ipAddresses?.[0] || 'N/A'} (342.8 KB)</span>
+                  <span className="font-mono">Unavailable</span>
                 </div>
               </div>
             </div>
