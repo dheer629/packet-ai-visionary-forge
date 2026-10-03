@@ -3,6 +3,12 @@
 ## Goal
 Deliver the requested Wireshark-class analysis features without weakening local-first capture privacy or inventing protocol fields, statistics, anomalies, topology, or AI findings. Existing upload, checkpoint, export, saved-capture, profile, and API-key workflows remain compatible.
 
+## Prerequisite — Correctness, scale, and security baseline
+- Move capture parsing and stateful analysis behind a Web Worker contract before adding stream-heavy dissectors, while preserving pause, cancel, checkpoint resume, and selected-packet byte evidence.
+- Add a typed dissector registry and fixture harness; remove the disconnected legacy decoder path so one tested decoder determines capability labels and UI fields.
+- Require authenticated access and per-user limits for built-in AI before exposing new AI actions; keep vendor-key validation available without persisting keys server-side.
+- Replace the current fixed-timeout AI transport with explicit cancellation and gateway-compliant streaming/error handling.
+
 ## Milestone 1 — Stateful traffic engine and analyst controls
 - Add normalized flow keys and TCP sequence-space tracking for both directions, including retransmissions, out-of-order segments, duplicate ACKs, zero-window events, handshake/close state, RTT samples, and incomplete-stream warnings.
 - Implement safe TCP payload reassembly with overlap handling, memory limits, gap markers, text/hex views, direction controls, search, and downloadable Follow Stream output.
@@ -13,7 +19,8 @@ Deliver the requested Wireshark-class analysis features without weakening local-
 ## Milestone 2 — Application dissectors
 - Extend the worker-safe byte decoder with bounded parsers for HTTP/2 frames and settings, gRPC message envelopes and metadata, QUIC long headers, WebSocket frames, Kafka request/response headers, Redis RESP, PostgreSQL startup/query/response messages, and MySQL handshake/command/result headers.
 - Use stream reassembly where a protocol spans TCP segments; expose exact byte offsets only when bytes map to one captured frame and mark reassembled fields separately.
-- Add each protocol to the capability registry at its truthful coverage level and include positive, truncated, malformed, and wrong-port tests using generated wire-format captures committed as fixtures.
+- Add each protocol to the capability registry at its truthful coverage level and include positive, truncated, malformed, segmented, and wrong-port tests using generated wire-format captures committed as fixtures.
+- Treat encrypted HTTP/2, gRPC, QUIC, WebSocket, database, and messaging payloads as unavailable unless the capture contains cleartext or supported session-key material; never infer hidden fields.
 
 ## Milestone 3 — Statistics and visual analysis
 - Add a Statistics menu containing Protocol Hierarchy, Conversations, Endpoints, I/O Graph, Service Response Time, and Flow/Sequence views.
@@ -39,9 +46,9 @@ Deliver the requested Wireshark-class analysis features without weakening local-
 
 ## Milestone 6 — NetTracer Agent and authenticated live capture
 - Add a separate distributable Python agent using tshark JSON streaming, strict capture/interface/BPF allowlists, bounded queues, reconnect backoff, health telemetry, and no embedded credentials.
-- Add a versioned authenticated live-ingest function/session protocol with ownership checks, packet batching, backpressure, expiration, and audit metadata.
+- Add a versioned authenticated live-session control protocol with ownership checks, packet batching, backpressure, expiration, and audit metadata; use a transport designed for sustained streams rather than writing every packet through request/response functions or database rows.
 - Add live-capture UI for agent status, host/interface selection, BPF, start/stop, packets-per-second, dropped packets, and the same packet/detail/statistics tools used offline.
-- Supply Kubernetes DaemonSet, ServiceAccount, least-privilege RBAC, Secret references, security context, network policy guidance, and an ephemeral-container capture script.
+- Supply Kubernetes DaemonSet, ServiceAccount, least-privilege RBAC, Secret references, security context, network policy guidance, and an explicit-consent ephemeral-container capture script; separate packet-capture capabilities from metadata-only Kubernetes API permissions.
 - Add agent unit tests, manifest validation, malformed-event tests, reconnect tests, and an authenticated live-session end-to-end test.
 
 ## Milestone 7 — Kubernetes intelligence, playbooks, and capture comparison
