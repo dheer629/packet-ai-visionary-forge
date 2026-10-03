@@ -260,8 +260,9 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
     
     // Check and determine endianness
     // 0xa1b2c3d4 (big-endian) or 0xd4c3b2a1 (little-endian)
-    const isLittleEndian = magicNumber === 0xd4c3b2a1;
-    const isBigEndian = magicNumber === 0xa1b2c3d4;
+    const isLittleEndian = magicNumber === 0xd4c3b2a1 || magicNumber === 0x4d3cb2a1;
+    const isBigEndian = magicNumber === 0xa1b2c3d4 || magicNumber === 0xa1b23c4d;
+    const isNanosecondResolution = magicNumber === 0x4d3cb2a1 || magicNumber === 0xa1b23c4d;
     
     // Check for PCAPNG format (0x0a0d0d0a)
     const isPcapNg = magicNumber === 0x0a0d0d0a;
@@ -316,9 +317,11 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         const origLen = dataView.getUint32(offset + 12, isLittleEndian); // original length
         
         // Calculate timestamp in seconds
-        const timestamp = tsSec + tsUsec / 1000000;
-        minTimestamp = Math.min(minTimestamp, timestamp);
-        maxTimestamp = Math.max(maxTimestamp, timestamp);
+        const timestamp = tsSec + tsUsec / (isNanosecondResolution ? 1_000_000_000 : 1_000_000);
+        if (Number.isFinite(timestamp) && timestamp > 0) {
+          minTimestamp = Math.min(minTimestamp, timestamp);
+          maxTimestamp = Math.max(maxTimestamp, timestamp);
+        }
         
         // Move to packet data
         offset += 16;
@@ -333,7 +336,7 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         // Ethernet is the most common (network = 1)
         let packetDetails: any = {
           number: packetCount + 1,
-          time: timestamp.toFixed(6),
+          time: Number.isFinite(timestamp) ? timestamp.toFixed(isNanosecondResolution ? 9 : 6) : '0.000000',
           relativeTime: '0.000000',
           source: "Unknown",
           destination: "Unknown",
@@ -369,8 +372,8 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
 
 
       
-        // Always set a relative time once we know the minimum timestamp
-        if (minTimestamp !== Number.MAX_VALUE && minTimestamp <= timestamp) {
+        // Always set a relative time once we know the minimum valid timestamp.
+        if (Number.isFinite(timestamp) && minTimestamp !== Number.MAX_VALUE && minTimestamp <= timestamp) {
           packetDetails.relativeTime = (timestamp - minTimestamp).toFixed(6);
         }
       
@@ -402,8 +405,10 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
       } catch (error) {
         if (isDecodeCancelled(error)) throw error;
         console.error(`Error parsing packet at offset ${offset}:`, error);
-        // Try to recover and move to the next 16-byte boundary
-        offset = (Math.floor(offset / 16) + 1) * 16;
+        // Classic PCAP records are not padded or aligned. Once a record header
+        // is corrupt there is no reliable next boundary, so stop rather than
+        // manufacturing rows from arbitrary payload bytes.
+        break;
       }
     }
       
@@ -503,7 +508,8 @@ const parseActualPcapData = async (filename: string, buffer: ArrayBuffer, progre
         sigfigs,
         snaplen,
         network,
-        isLittleEndian
+        isLittleEndian,
+        timestampResolution: isNanosecondResolution ? 'nanoseconds' : 'microseconds'
       }
     };
   } catch (error) {
@@ -534,6 +540,7 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
     ? [...options!.resume!.interfaces!]
     : [];
   let pendingGate = false;
+  let sectionLittleEndian = true;
   
   // Block Type values
   const SHB_TYPE = 0x0a0d0d0a; // Section Header Block
@@ -554,8 +561,16 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
   try {
     while (offset + 12 <= dataView.byteLength) {
       // Each block starts with type and length
-      const blockType = dataView.getUint32(offset, true);  // Always little-endian per specification
-      const blockTotalLength = dataView.getUint32(offset + 4, true);
+      const rawBlockType = dataView.getUint32(offset, false);
+      const isSectionHeader = rawBlockType === SHB_TYPE;
+      if (isSectionHeader && offset + 12 <= dataView.byteLength) {
+        const byteOrderMagic = dataView.getUint32(offset + 8, false);
+        if (byteOrderMagic === 0x1a2b3c4d) sectionLittleEndian = false;
+        else if (byteOrderMagic === 0x4d3c2b1a) sectionLittleEndian = true;
+        else throw new Error(`Invalid PCAP-NG byte-order magic at offset ${offset}`);
+      }
+      const blockType = isSectionHeader ? SHB_TYPE : dataView.getUint32(offset, sectionLittleEndian);
+      const blockTotalLength = dataView.getUint32(offset + 4, sectionLittleEndian);
       
       // Validate block size
       if (blockTotalLength < 12 || offset + blockTotalLength > dataView.byteLength) {
@@ -568,29 +583,40 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
         // Section Header Block
         case SHB_TYPE:
           if (blockTotalLength >= 28) {
-            const byteOrderMagic = dataView.getUint32(offset + 8, true);
-            const isLittleEndian = byteOrderMagic === 0x1a2b3c4d;
-            
-            if (!isLittleEndian && byteOrderMagic !== 0x4d3c2b1a) {
-              console.warn(`Invalid byte-order magic in SHB: 0x${byteOrderMagic.toString(16)}`);
-            }
-            
-            const versionMajor = dataView.getUint16(offset + 12, isLittleEndian);
-            const versionMinor = dataView.getUint16(offset + 14, isLittleEndian);
-            console.log(`PCAP-NG version ${versionMajor}.${versionMinor}, endianness: ${isLittleEndian ? 'little' : 'big'}`);
+            const versionMajor = dataView.getUint16(offset + 12, sectionLittleEndian);
+            const versionMinor = dataView.getUint16(offset + 14, sectionLittleEndian);
+            interfaceDescriptions = [];
+            console.log(`PCAP-NG version ${versionMajor}.${versionMinor}, endianness: ${sectionLittleEndian ? 'little' : 'big'}`);
           }
           break;
         
         // Interface Description Block
         case IDB_TYPE:
           if (blockTotalLength >= 20) {
-            const linkType = dataView.getUint16(offset + 8, true);
-            const snapLen = dataView.getUint32(offset + 12, true);
+            const linkType = dataView.getUint16(offset + 8, sectionLittleEndian);
+            const snapLen = dataView.getUint32(offset + 12, sectionLittleEndian);
+            let timestampResolution = 1e-6;
+            let optionOffset = offset + 16;
+            const optionsEnd = offset + blockTotalLength - 4;
+            while (optionOffset + 4 <= optionsEnd) {
+              const optionCode = dataView.getUint16(optionOffset, sectionLittleEndian);
+              const optionLength = dataView.getUint16(optionOffset + 2, sectionLittleEndian);
+              if (optionCode === 0) break;
+              if (optionOffset + 4 + optionLength > optionsEnd) break;
+              if (optionCode === 9 && optionLength >= 1) {
+                const resolutionByte = dataView.getUint8(optionOffset + 4);
+                timestampResolution = resolutionByte & 0x80
+                  ? Math.pow(2, -(resolutionByte & 0x7f))
+                  : Math.pow(10, -resolutionByte);
+              }
+              optionOffset += 4 + Math.ceil(optionLength / 4) * 4;
+            }
             
             interfaceDescriptions.push({
               index: interfaceDescriptions.length,
               linkType,
-              snapLen
+              snapLen,
+              timestampResolution
             });
             
             console.log(`Interface ${interfaceDescriptions.length-1}: link-type ${linkType}, snap length ${snapLen}`);
@@ -601,23 +627,24 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
         case EPB_TYPE:
           if (blockTotalLength >= 32) {
             try {
-              const interfaceId = dataView.getUint32(offset + 8, true);
-              const timestampHigh = dataView.getUint32(offset + 12, true);
-              const timestampLow = dataView.getUint32(offset + 16, true);
-              const capturedLen = dataView.getUint32(offset + 20, true);
-              const packetLen = dataView.getUint32(offset + 24, true);
+              const interfaceId = dataView.getUint32(offset + 8, sectionLittleEndian);
+              const timestampHigh = dataView.getUint32(offset + 12, sectionLittleEndian);
+              const timestampLow = dataView.getUint32(offset + 16, sectionLittleEndian);
+              const capturedLen = dataView.getUint32(offset + 20, sectionLittleEndian);
+              const packetLen = dataView.getUint32(offset + 24, sectionLittleEndian);
               
               // Calculate timestamp (EPB uses 64-bit int)
               // This is a simplification - proper handling depends on interface options
               const timestamp = timestampHigh * 4294967296 + timestampLow; // 2^32
-              const timestampSec = timestamp / 1000000; // Assume microseconds
+              const iface = interfaceDescriptions[interfaceId];
+              if (!iface) throw new Error(`Packet references missing interface ${interfaceId}`);
+              const timestampSec = timestamp * (iface.timestampResolution ?? 1e-6);
               
               // Track timestamp range
-              minTimestamp = Math.min(minTimestamp, timestampSec);
-              maxTimestamp = Math.max(maxTimestamp, timestampSec);
-              
-              // Get interface info if available
-              const iface = interfaceDescriptions[interfaceId] || { linkType: 1 }; // Default to Ethernet
+              if (Number.isFinite(timestampSec) && timestampSec > 0) {
+                minTimestamp = Math.min(minTimestamp, timestampSec);
+                maxTimestamp = Math.max(maxTimestamp, timestampSec);
+              }
               
               // Parse packet based on link type (similar to parseActualPcapData)
               let packetDetails: any = {
@@ -642,6 +669,9 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
               packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
               packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(packetDataOffset, packetDataOffset + dumpBytes)));
               
+              if (packetDataOffset + capturedLen > offset + blockTotalLength - 4) {
+                throw new Error(`Captured length ${capturedLen} exceeds EPB body`);
+              }
               const frame = new Uint8Array(
                 dataView.buffer.slice(packetDataOffset, packetDataOffset + capturedLen)
               );
@@ -671,7 +701,14 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
         // Simple Packet Block (limited info)
         case SPB_TYPE:
           if (blockTotalLength >= 16) {
-            const packetLen = dataView.getUint32(offset + 8, true);
+            const packetLen = dataView.getUint32(offset + 8, sectionLittleEndian);
+            const availableLength = Math.max(0, blockTotalLength - 16);
+            const capturedLen = Math.min(packetLen, availableLength);
+            const iface = interfaceDescriptions[0];
+            if (!iface) {
+              console.warn('Skipping Simple Packet Block without an Interface Description Block');
+              break;
+            }
             
             // Create simple packet representation
             const packetDetails = {
@@ -681,21 +718,31 @@ const parsePcapNgFormat = async (dataView: DataView, fileSize: number, filename:
               source: "Unknown",
               destination: "Unknown",
               protocol: "Unknown",
-              length: packetLen,
-              info: "Simple Packet (no timestamp)",
-              layers: ["Raw"],
+              length: capturedLen,
+              info: "",
+              layers: [],
               hexDump: "",
               asciiDump: ""
             };
             
             // Add hex dump
-            const dumpBytes = Math.min(48, packetLen);
+            const dumpBytes = Math.min(48, capturedLen);
             const dataOffset = offset + 12;
             packetDetails.hexDump = createHexDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
             packetDetails.asciiDump = createAsciiDump(new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + dumpBytes)));
+            applyDecodedFrame(
+              packetDetails,
+              new Uint8Array(dataView.buffer.slice(dataOffset, dataOffset + capturedLen)),
+              iface.linkType,
+              capturedLen,
+              0,
+              ipAddresses,
+              protocolCounts,
+              conversations,
+            );
             
             // Add packet to collection and update stats
-            packetSizes.push(packetLen);
+            packetSizes.push(capturedLen);
             packets.push(packetDetails);
 
             

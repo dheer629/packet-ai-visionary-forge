@@ -60,10 +60,11 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
   const processFile = async (file: File) => {
     if (!file) return;
 
-    if (!file.name.endsWith('.pcap') && !file.name.endsWith('.pcapng')) {
+    const normalizedName = file.name.toLowerCase();
+    if (!normalizedName.endsWith('.pcap') && !normalizedName.endsWith('.pcapng') && !normalizedName.endsWith('.cap')) {
       toast({
         title: 'Invalid File',
-        description: 'Please upload a valid PCAP or PCAPNG file',
+        description: 'Please upload a valid PCAP, PCAPNG, or CAP file',
         variant: 'destructive',
       });
       return;
@@ -72,7 +73,16 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     const controller = new DecodeController();
     controllerRef.current = controller;
 
-    const isNg = file.name.endsWith('.pcapng');
+    if (file.size > 500 * 1024 * 1024) {
+      toast({
+        title: 'Capture too large',
+        description: 'Please select a capture up to 500 MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const isNg = normalizedName.endsWith('.pcapng');
     setFileName(file.name);
     setIsUploading(true);
     setIsPaused(false);

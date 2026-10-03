@@ -38,16 +38,13 @@ export const enhancePacketData = (analysisData: any, file: File): ProcessedData 
     console.log(`Processing ${analysisData.packets.length} packets with comprehensive protocol decoding`);
     
     analysisData.packets = analysisData.packets.map((packet: any, index: number) => {
-      if (!packet) {
-        console.warn(`Packet at index ${index} is undefined or null`);
-        return createDefaultPacket(index);
-      }
+      if (!packet) return null;
       
       let enhancedPacket = {
         ...packet,
         number: packet.number || index + 1,
-        time: packet.time || packet.timestamp || packet.relativeTime || (index * 0.001).toFixed(6),
-        relativeTime: packet.relativeTime || packet.time || (index * 0.001).toFixed(6),
+        time: packet.time || packet.timestamp || packet.relativeTime || '0.000000',
+        relativeTime: packet.relativeTime || packet.time || '0.000000',
       };
       
       // Enhanced protocol decoding from raw packet data
@@ -60,12 +57,12 @@ export const enhancePacketData = (analysisData: any, file: File): ProcessedData 
       }
       
       return enhancedPacket;
-    });
+    }).filter(Boolean);
     
     console.log('Enhanced packet data sample:', analysisData.packets.slice(0, 3));
   } else {
-    console.warn('No packet data found in analysis result, creating default packets');
-    analysisData.packets = Array.from({ length: 10 }).map((_, idx) => createDefaultPacket(idx));
+    console.warn('No packet records were decoded from the capture');
+    analysisData.packets = [];
   }
 
   analysisData = generateSummaryData(analysisData);
