@@ -4,13 +4,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Filter, Download } from 'lucide-react';
+import { Search, Filter, Download, Route } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
 import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
 import { detectTraceProfile, listTraceProfiles, getTraceProfileByName } from '@/utils/traceProfile';
 import { useToast } from '@/components/ui/use-toast';
+import StreamFollower from './StreamFollower';
 import {
   migrateViewState,
   hasStoredView,
@@ -52,6 +53,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
   const [appliedFilterId, setAppliedFilterId] = useState<string | null>(storedView?.appliedFilterId ?? null);
 
   const [selectedPacket, setSelectedPacket] = useState<any>(null);
+  const [followStreamOpen, setFollowStreamOpen] = useState(false);
 
   const [showFilters, setShowFilters] = useState(false);
   const [filterOptions, setFilterOptions] = useState({
@@ -791,7 +793,18 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
       
       {selectedPacket && (
         <div className="mt-4">
+          {selectedPacket.tcp && (
+            <Button variant="outline" size="sm" className="mb-3" onClick={() => setFollowStreamOpen(true)}>
+              <Route className="mr-1 h-4 w-4" />Follow TCP Stream
+            </Button>
+          )}
           <PacketDetails packet={selectedPacket} onClose={closePacketDetails} />
+          <StreamFollower
+            packets={safePackets}
+            packetNumber={Number(selectedPacket.number)}
+            open={followStreamOpen}
+            onOpenChange={setFollowStreamOpen}
+          />
         </div>
       )}
     </div>

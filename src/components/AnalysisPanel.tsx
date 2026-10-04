@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import VisualizationChart from './VisualizationChart';
 import { Card } from '@/components/ui/card';
 import EnhancedPacketList from './EnhancedPacketList';
+import ExpertInfo from './ExpertInfo';
 
 interface AnalysisPanelProps {
   data: any;
@@ -153,6 +154,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="packets">Packets</TabsTrigger>
           <TabsTrigger value="conversations">Conversations</TabsTrigger>
+          <TabsTrigger value="expert">Expert Info</TabsTrigger>
           <TabsTrigger value="decoders">Decoders</TabsTrigger>
         </TabsList>
 
@@ -295,6 +297,10 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ data }) => {
 
         <TabsContent value="decoders" className="mt-4">
           <DecoderCapabilities />
+        </TabsContent>
+
+        <TabsContent value="expert" className="mt-4">
+          <ExpertInfo packets={safeData.packets} />
         </TabsContent>
       </Tabs>
 

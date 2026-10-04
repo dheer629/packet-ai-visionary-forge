@@ -125,12 +125,18 @@ const decodeRawPacketData = (enhancedPacket: any, packet: any) => {
         };
         break;
       case 'TCP':
+        {
+          const payloadRange = layer.fieldOffsets?.['Payload length'];
+          const payloadBytes = payloadRange
+            ? Array.from((rawData as Uint8Array | number[]).slice(payloadRange[0], payloadRange[0] + payloadRange[1]))
+            : [];
         enhancedPacket.tcp = {
           srcPort: String(f['Source port']), dstPort: String(f['Destination port']),
           seq: String(f['Sequence number']), ack: String(f['Acknowledgment number']),
-          flags: String(f.Flags), window: String(f['Window size']), length: String(f['Payload length']),
+          flags: String(f.Flags), window: String(f['Window size']), length: String(f['Payload length']), payloadBytes,
         };
         break;
+        }
       case 'UDP':
         enhancedPacket.udp = { srcPort: String(f['Source port']), dstPort: String(f['Destination port']), length: String(f.Length) };
         break;

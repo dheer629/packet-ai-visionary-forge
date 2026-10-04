@@ -58,10 +58,14 @@ function applyDecodedFrame(
         source: f.Source, destination: f.Destination, flowLabel: String(f['Flow label']),
       };
     } else if (layer.name === 'TCP') {
+      const payloadRange = layer.fieldOffsets?.['Payload length'];
+      const payloadBytes = payloadRange
+        ? Array.from(frame.slice(payloadRange[0], payloadRange[0] + payloadRange[1]))
+        : [];
       packetDetails.tcp = {
         srcPort: String(f['Source port']), dstPort: String(f['Destination port']),
         seq: String(f['Sequence number']), ack: String(f['Acknowledgment number']),
-        flags: String(f.Flags), window: String(f['Window size']), length: String(f['Payload length']),
+        flags: String(f.Flags), window: String(f['Window size']), length: String(f['Payload length']), payloadBytes,
       };
     } else if (layer.name === 'UDP') {
       packetDetails.udp = {

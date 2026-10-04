@@ -11,7 +11,7 @@
 - [ ] Validate with real sample captures, large-capture tests, security checks, and end-to-end saved/live workflows.
 
 ## Requested advanced analyzer expansion
-- [ ] TCP stream state, anomaly detection, Follow Stream, Expert Info, and editable coloring rules.
+- [ ] TCP stream state, anomaly detection, Follow Stream, Expert Info, and editable coloring rules. (Stream/Expert foundation implemented; coloring rules and advanced state remain.)
 - [ ] Tested HTTP/2, gRPC, QUIC, WebSocket, Kafka, Redis, PostgreSQL, and MySQL dissectors.
 - [ ] Statistics workspace: hierarchy, conversations, endpoints, I/O, service response time, and sequence flows.
 - [ ] Tested SCTP, Diameter AVPs, GTPv2-C, GTP-U, PFCP, NGAP, 5G SBI, and telecom call-flow ladders.
