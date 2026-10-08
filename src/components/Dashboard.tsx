@@ -461,6 +461,7 @@ const Dashboard = () => {
             
             <TabsContent value="packets" className="mt-4">
               <EnhancedPacketList
+                key={`${analysisData?.filename ?? ''}-${analysisData?.timestamp ?? ''}`}
                 packets={analysisData?.packets || []}
                 filename={analysisData?.filename}
                 captureSize={analysisData?.size}

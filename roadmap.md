@@ -1,5 +1,11 @@
 # Roadmap
 
+## Current empty-capture report
+- [x] Repair Analyze PCAP so it decodes the selected file instead of reopening the picker; support actual drag-and-drop.
+- [x] Display offline packets independently of AI/network availability and surface persistent processing errors.
+- [x] Verify selection, analysis, repeat analysis, and JSON exports in the browser with AI requests blocked; 16 regression tests pass.
+- [ ] Validate the original failing capture: blocked on attachment of superdam_etdp2.pcap (only its screenshot is available).
+
 ## NetTracer Pro brief (new)
 - [ ] Restore reliable packet visibility for real PCAP, PCAPNG, and CAP inputs; never substitute fabricated rows or statistics.
 - [ ] Move offline parsing into a streaming Web Worker and virtualize the packet table for large captures.

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { processPcapFile } from '../utils/pcapProcessor';
 import { useToast } from '@/components/ui/use-toast';
 import { enhancePacketData, ProcessedData } from '../utils/packetEnhancer';
-import { applyAIEnhancement } from '../utils/aiEnhancement';
 import { DecodeController, isDecodeCancelled } from '../utils/decodeControl';
 import {
   CheckpointMeta,
@@ -22,7 +21,7 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
   const [fileName, setFileName] = useState<string | null>(null);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [dataFormat, setDataFormat] = useState<string | null>(null);
-  const [aiEnrichment, setAiEnrichment] = useState<boolean>(false);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const [checkpoint, setCheckpoint] = useState<CheckpointMeta | null>(null);
   const controllerRef = useRef<DecodeController | null>(null);
 
@@ -58,7 +57,8 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
   }, []);
 
   const processFile = async (file: File) => {
-    if (!file) return;
+    if (!file || controllerRef.current) return;
+    setProcessingError(null);
 
     const normalizedName = file.name.toLowerCase();
     if (!normalizedName.endsWith('.pcap') && !normalizedName.endsWith('.pcapng') && !normalizedName.endsWith('.cap')) {
@@ -70,9 +70,6 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       return;
     }
 
-    const controller = new DecodeController();
-    controllerRef.current = controller;
-
     if (file.size > 500 * 1024 * 1024) {
       toast({
         title: 'Capture too large',
@@ -82,6 +79,8 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       return;
     }
 
+    const controller = new DecodeController();
+    controllerRef.current = controller;
     const isNg = normalizedName.endsWith('.pcapng');
     setFileName(file.name);
     setIsUploading(true);
@@ -89,6 +88,7 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     setProcessingProgress(0);
     setDataFormat(isNg ? 'PCAPNG' : 'PCAP');
 
+    try {
     // Resume from a stored checkpoint when the same file is selected again.
     const storedMeta = checkpoint ?? (await loadCheckpointMeta());
     let resume: { offset: number; packets: any[]; interfaces?: any[] } | undefined;
@@ -119,28 +119,28 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       startChunks
     );
 
-    try {
       const progressCallback = (progress: number) => {
         setProcessingProgress(Math.round(progress * 100));
       };
 
-      let analysisData = await processPcapFile(file, progressCallback, controller, {
+      const analysisData = await processPcapFile(file, progressCallback, controller, {
         resume,
         checkpoint: writer,
       });
 
-      if (!analysisData) {
-        analysisData = { packets: [], summary: {} };
+      if (!analysisData || !Array.isArray(analysisData.packets)) {
+        throw new Error('The capture parser did not return packet records.');
       }
 
       const enhancedData = enhancePacketData(analysisData, file);
-      const aiEnhancedData = await applyAIEnhancement(enhancedData, setAiEnrichment, toast);
-
-      onFileUpload(aiEnhancedData);
+      // Offline decoding must never depend on credentials, network access or AI.
+      onFileUpload(enhancedData);
 
       toast({
         title: 'Analysis Complete',
-        description: `Successfully processed ${file.name} (${aiEnhancedData.summary.totalPackets} packets)`,
+        description: enhancedData.packets.length === 0
+          ? `${file.name} contains no decoded packet records.`
+          : `Successfully processed ${file.name} (${enhancedData.summary.totalPackets} packets)`,
       });
     } catch (error) {
       if (isDecodeCancelled(error)) {
@@ -154,6 +154,7 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
       }
 
       console.error('Error processing PCAP file:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Unknown processing error');
       toast({
         title: 'Processing Error',
         description: `Failed to process the PCAP file: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -174,7 +175,7 @@ export const useFileProcessor = (onFileUpload: (data: ProcessedData) => void) =>
     fileName,
     processingProgress,
     dataFormat,
-    aiEnrichment,
+    processingError,
     checkpoint,
     processFile,
     pauseDecode,
