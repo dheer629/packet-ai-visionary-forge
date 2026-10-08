@@ -6,6 +6,7 @@
 // when the evidence is missing.
 
 import { linkTypeName } from './linkTypes';
+import { packetProtocolNames, matchesProtocolFilter, protocolCounts } from './protocolFilters';
 
 export interface SuggestedFilter {
   id: string;
@@ -56,7 +57,7 @@ const RULES: ProfileRule[] = [
         id: 'gtp-control',
         label: 'GTP-C / PFCP signalling',
         description: 'Session create, modify and delete messages.',
-        protocols: match('GTPv2', 'GTP-C', 'PFCP'),
+        protocols: match('GTPv2', 'GTPv2-C', 'GTP-C', 'PFCP'),
       },
     ],
   },
@@ -115,8 +116,8 @@ const RULES: ProfileRule[] = [
     name: 'Name resolution (DNS)',
     markers: ['DNS', 'MDNS', 'LLMNR'],
     filters: () => [
-      { id: 'dns-queries', label: 'Queries only', description: 'Requests sent to resolvers.', text: 'Query' },
-      { id: 'dns-answers', label: 'Responses only', description: 'Replies from resolvers.', text: 'Response' },
+      { id: 'dns-queries', label: 'Queries only', description: 'Requests sent to resolvers.', protocols: ['DNS', 'mDNS', 'LLMNR'], text: 'Query' },
+      { id: 'dns-answers', label: 'Responses only', description: 'Replies from resolvers.', protocols: ['DNS', 'mDNS', 'LLMNR'], text: 'Response' },
     ],
   },
   {
@@ -126,6 +127,23 @@ const RULES: ProfileRule[] = [
       { id: 'svc-arp', label: 'ARP only', description: 'Address resolution on the local segment.', protocols: match('ARP') },
       { id: 'svc-icmp', label: 'ICMP only', description: 'Reachability and error reports.', protocols: match('ICMP') },
       { id: 'svc-dhcp', label: 'DHCP only', description: 'Address leases and renewals.', protocols: match('DHCP', 'BOOTP') },
+    ],
+  },
+  {
+    name: 'Databases and messaging',
+    markers: ['KAFKA', 'REDIS', 'POSTGRESQL', 'MYSQL', 'MQTT', 'AMQP'],
+    filters: (match) => [
+      { id: 'data-db', label: 'Database traffic', description: 'Observed database protocol layers.', protocols: match('Redis', 'PostgreSQL', 'MySQL') },
+      { id: 'data-messaging', label: 'Messaging traffic', description: 'Observed messaging protocol layers.', protocols: match('Kafka', 'MQTT', 'AMQP') },
+    ],
+  },
+  {
+    name: 'Routing and tunnels',
+    markers: ['BGP', 'OSPF', 'IS-IS', 'GRE', 'VXLAN', 'GENEVE', 'MPLS', 'VLAN'],
+    filters: (match) => [
+      { id: 'routing-control', label: 'Routing protocols', description: 'Observed routing protocol layers.', protocols: match('BGP', 'OSPF', 'IS-IS') },
+      { id: 'routing-tunnels', label: 'Tunnelled traffic', description: 'Observed encapsulation layers.', protocols: match('GRE', 'VXLAN', 'GENEVE', 'MPLS') },
+      { id: 'routing-vlan', label: 'VLAN traffic', description: 'Observed VLAN-tagged frames.', protocols: match('VLAN', 'QinQ') },
     ],
   },
 ];
@@ -147,14 +165,7 @@ function collectEvidence(packets: any[]): Evidence | null {
 
   for (const p of packets) {
     if (!p) continue;
-    const proto = String(p.protocol || 'Unknown');
-    counts.set(proto, (counts.get(proto) || 0) + 1);
-    // Protocol stacks let a TCP frame still count as HTTP/TLS evidence.
-    const stack: string[] = Array.isArray(p.protocolStack) ? p.protocolStack : [];
-    stack.forEach((s) => {
-      const name = String(s);
-      if (name !== proto) counts.set(name, (counts.get(name) || 0) + 1);
-    });
+    packetProtocolNames(p).forEach((name) => counts.set(name, (counts.get(name) || 0) + 1));
     if (p.linkType !== undefined && p.linkType !== null) {
       linkSet.add(p.linkTypeName || linkTypeName(Number(p.linkType)));
     }
@@ -247,5 +258,25 @@ export function listTraceProfiles(
 /** Rebuilds a specific view by name (used when the user overrides detection). */
 export function getTraceProfileByName(packets: any[], name: string): TraceProfile | null {
   return listTraceProfiles(packets).find((o) => o.name === name)?.profile ?? null;
+}
+
+/** Suggestions across every observed family, with counts from the same filter predicate used by the table. */
+export function captureFilterSuggestions(packets: any[]): (SuggestedFilter & { count: number })[] {
+  const profiles = listTraceProfiles(packets).filter((entry) => entry.available);
+  const candidates = profiles.flatMap((entry) => entry.profile.filters);
+  for (const [name] of protocolCounts(packets)) {
+    candidates.push({ id: `protocol-${name}`, label: `${name} frames`, description: `Frames containing a decoded ${name} layer.`, protocols: [name] });
+  }
+  const seen = new Set<string>();
+  return candidates.flatMap((filter) => {
+    const protocols = filter.protocols?.filter((name) => packets.some((packet) => packetProtocolNames(packet).some((value) => value.toUpperCase() === name.toUpperCase())));
+    if (filter.protocols?.length && !protocols?.length) return [];
+    const normalized = { ...filter, protocols };
+    const count = packets.filter((packet) => matchesProtocolFilter(packet, protocols, filter.text)).length;
+    const signature = `${[...(protocols ?? [])].sort().join('|')}:${filter.text ?? ''}`;
+    if (!count || seen.has(signature)) return [];
+    seen.add(signature);
+    return [{ ...normalized, count }];
+  });
 }
 
