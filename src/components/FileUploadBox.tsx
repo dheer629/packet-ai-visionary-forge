@@ -18,6 +18,7 @@ interface FileUploadBoxProps {
   dataFormat: string | null;
   aiEnrichment: boolean;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileDrop: (file: File) => void;
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
@@ -33,6 +34,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({
   dataFormat,
   aiEnrichment,
   onFileChange,
+  onFileDrop,
   onPause,
   onResume,
   onCancel,
@@ -44,7 +46,14 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({
     : 0;
 
   return (
-    <div className="flex flex-col items-center justify-center border-2 border-dashed border-cyber-border rounded-md p-6 bg-cyber-muted bg-opacity-30 transition-all hover:border-cyber-primary">
+    <div
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        const file = event.dataTransfer.files[0];
+        if (file && !isUploading) onFileDrop(file);
+      }}
+      className="flex flex-col items-center justify-center border-2 border-dashed border-cyber-border rounded-md p-6 bg-cyber-muted bg-opacity-30 transition-all hover:border-cyber-primary">
       {checkpoint && !isUploading && (
         <div className="mb-4 w-full rounded-md border border-cyber-border bg-cyber-muted/50 p-3 text-xs">
           <p className="font-medium text-cyber-accent">Unfinished decode found</p>
@@ -65,6 +74,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({
         id="pcap-upload"
         className="hidden"
         accept=".pcap,.pcapng,.cap"
+        disabled={isUploading}
         onChange={onFileChange}
       />
       <label htmlFor="pcap-upload" className="w-full flex flex-col items-center cursor-pointer">

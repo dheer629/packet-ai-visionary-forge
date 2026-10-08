@@ -1,16 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useFileProcessor } from '../hooks/useFileProcessor';
 import FileUploadBox from './FileUploadBox';
 
 const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const {
     isUploading,
     isPaused,
     fileName,
     processingProgress,
     dataFormat,
-    aiEnrichment,
+    processingError,
     processFile,
     pauseDecode,
     resumeDecode,
@@ -19,11 +20,9 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
     discardCheckpoint,
   } = useFileProcessor(onFileUpload);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await processFile(file);
-    }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedFile(e.target.files?.[0] ?? null);
+    e.target.value = '';
   };
 
   return (
@@ -33,11 +32,12 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
       <FileUploadBox
         isUploading={isUploading}
         isPaused={isPaused}
-        fileName={fileName}
+        fileName={selectedFile?.name ?? fileName}
         processingProgress={processingProgress}
         dataFormat={dataFormat}
-        aiEnrichment={aiEnrichment}
+        aiEnrichment={false}
         onFileChange={handleFileChange}
+        onFileDrop={setSelectedFile}
         onPause={pauseDecode}
         onResume={resumeDecode}
         onCancel={cancelDecode}
@@ -54,11 +54,13 @@ const FileUpload = ({ onFileUpload }: { onFileUpload: (data: any) => void }) => 
         onDiscardCheckpoint={discardCheckpoint}
       />
 
+      {processingError && <p role="alert" className="mt-3 break-words text-sm text-destructive">{processingError}</p>}
+
       <div className="mt-4 flex justify-end">
         <Button
-          disabled={isUploading || !fileName}
+          disabled={isUploading || !selectedFile}
           className="bg-cyber-primary text-cyber-foreground hover:bg-cyber-primary/80"
-          onClick={() => document.getElementById('pcap-upload')?.click()}
+          onClick={() => { if (selectedFile) void processFile(selectedFile); }}
         >
           {isUploading ? `Processing (${processingProgress}%)` : 'Analyze PCAP'}
         </Button>
