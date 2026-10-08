@@ -1,5 +1,9 @@
 # Roadmap
 
+## Protocols and filter suggestions
+- [ ] Expose every observed protocol, including nested protocol layers, with per-frame counts and a searchable capability catalog.
+- [ ] Suggest filters for all matching trace families, not just the dominant profile; verify matching and counts with tests and a captured-byte upload.
+
 ## Current empty-capture report
 - [x] Repair Analyze PCAP so it decodes the selected file instead of reopening the picker; support actual drag-and-drop.
 - [x] Display offline packets independently of AI/network availability and surface persistent processing errors.
