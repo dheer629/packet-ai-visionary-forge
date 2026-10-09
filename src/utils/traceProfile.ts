@@ -269,6 +269,7 @@ export function captureFilterSuggestions(packets: any[]): (SuggestedFilter & { c
   }
   const seen = new Set<string>();
   return candidates.flatMap((filter) => {
+    if (filter.protocols && !filter.protocols.length) return [];
     const protocols = filter.protocols?.filter((name) => packets.some((packet) => packetProtocolNames(packet).some((value) => value.toUpperCase() === name.toUpperCase())));
     if (filter.protocols?.length && !protocols?.length) return [];
     const normalized = { ...filter, protocols };

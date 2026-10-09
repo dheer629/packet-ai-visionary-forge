@@ -21,6 +21,7 @@ describe('capture-derived protocol filters', () => {
     expect(suggestions.find((filter) => filter.id === 'web-tls')?.count).toBe(1);
     expect(suggestions.find((filter) => filter.id === 'gtp-control')?.count).toBe(1);
     expect(suggestions.some((filter) => filter.id === 'dns-answers')).toBe(false);
+    expect(suggestions.some((filter) => filter.id === 'gtp-user')).toBe(false);
     for (const filter of suggestions) expect(filter.count).toBe(packets.filter((packet) => matchesProtocolFilter(packet, filter.protocols, filter.text)).length);
   });
   it('does not infer protocols from ports or advertise unimplemented decoders', () => {
