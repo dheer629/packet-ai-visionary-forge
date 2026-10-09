@@ -9,7 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import PacketDetails from './PacketDetails';
 import { downloadPacketExport, downloadPacketCsv } from '@/utils/exportPackets';
 import { linkTypeName } from '@/utils/linkTypes';
-import { detectTraceProfile, listTraceProfiles, getTraceProfileByName } from '@/utils/traceProfile';
+import { detectTraceProfile, listTraceProfiles, getTraceProfileByName, captureFilterSuggestions } from '@/utils/traceProfile';
+import { protocolCounts, protocolChoices, matchesProtocolFilter, packetProtocolNames } from '@/utils/protocolFilters';
+import ProtocolFilterPicker from './ProtocolFilterPicker';
 import { useToast } from '@/components/ui/use-toast';
 import StreamFollower from './StreamFollower';
 import {
@@ -210,14 +212,9 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
   }, [packets]);
   
   // Detected protocol / link-type facets, straight from the decoded packets
-  const protocolFacets = useMemo(() => {
-    const counts = new Map<string, number>();
-    safePackets.forEach((p) => {
-      const proto = String(p?.protocol || 'Unknown');
-      counts.set(proto, (counts.get(proto) || 0) + 1);
-    });
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  }, [safePackets]);
+  const protocolFacets = useMemo(() => protocolCounts(safePackets), [safePackets]);
+  const choices = useMemo(() => protocolChoices(safePackets), [safePackets]);
+  const suggestions = useMemo(() => captureFilterSuggestions(safePackets), [safePackets]);
 
   const linkTypeFacets = useMemo(() => {
     const counts = new Map<string, number>();
@@ -297,6 +294,8 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
     setFilter(f.text || '');
     setAppliedFilterId(f.id ?? null);
     setAutoApplied(null);
+    setSelectedLinkTypes([]);
+    setFilterOptions({ protocol: '', source: '', destination: '', minLength: '', maxLength: '', flags: '' });
     toast({ title: 'Filter applied', description: f.label });
   };
 
@@ -335,6 +334,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
     setFilter('');
     setAppliedFilterId(null);
     setAutoApplied(null);
+    setFilterOptions({ protocol: '', source: '', destination: '', minLength: '', maxLength: '', flags: '' });
   };
 
   const toggleValue = (list: string[], value: string) =>
@@ -368,11 +368,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
       
       // Quick protocol facet filter — matches the displayed protocol or any
       // protocol in the decoded stack (so a tunnelled frame still matches GTP).
-      if (selectedProtocols.length > 0) {
-        const stack: string[] = Array.isArray(packet.protocolStack) ? packet.protocolStack : [];
-        const candidates = [String(packet.protocol || 'Unknown'), ...stack.map(String)];
-        if (!candidates.some((c) => selectedProtocols.includes(c))) return false;
-      }
+      if (!matchesProtocolFilter(packet, selectedProtocols)) return false;
 
 
       // Link-type facet filter
@@ -385,7 +381,7 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
 
       // Protocol filter
       if (filterOptions.protocol && 
-          !String(packet.protocol || '').toLowerCase().includes(filterOptions.protocol.toLowerCase())) {
+          !packetProtocolNames(packet).some((name) => name.toLowerCase().includes(filterOptions.protocol.toLowerCase()))) {
         return false;
       }
       
@@ -578,19 +574,19 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
               </Button>
             </div>
           </div>
-          {profile.filters.length > 0 && (
+          {suggestions.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-blue-900/70 mr-1">Ready-to-use filters:</span>
-              {profile.filters.map((f) => (
+              {suggestions.map((f) => (
                 <Button
                   key={f.id}
                   variant={appliedFilterId === f.id ? 'default' : 'outline'}
                   size="sm"
-                  className={`h-7 text-[11px] ${appliedFilterId === f.id ? '' : 'bg-white'}`}
+                  className="h-7 text-[11px]"
                   title={f.description}
                   onClick={() => applySuggested(f)}
                 >
-                  {f.label}
+                  {f.label} <span className="ml-1 text-[10px] opacity-70">{f.count}</span>
                 </Button>
               ))}
             </div>
@@ -600,20 +596,27 @@ const EnhancedPacketList: React.FC<EnhancedPacketListProps> = ({
 
 
 
+      <ProtocolFilterPicker choices={choices} selected={selectedProtocols} onToggle={(name) => {
+        setSelectedProtocols((prev) => toggleValue(prev, name));
+        setAppliedFilterId(null);
+      }} />
+
       {(protocolFacets.length > 0 || linkTypeFacets.length > 0) && (
         <div className="mb-4 space-y-2">
           {protocolFacets.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-cyber-foreground/60 mr-1">Protocol:</span>
               {protocolFacets.map(([proto, count]) => (
-                <Badge
+                <Button
                   key={proto}
                   variant={selectedProtocols.includes(proto) ? 'default' : 'outline'}
-                  className="cursor-pointer text-[11px] font-mono"
+                  size="sm"
+                  aria-pressed={selectedProtocols.includes(proto)}
+                  className="h-6 text-[11px] font-mono"
                   onClick={() => setSelectedProtocols((prev) => toggleValue(prev, proto))}
                 >
                   {proto} <span className="ml-1 opacity-70">{count}</span>
-                </Badge>
+                </Button>
               ))}
               {selectedProtocols.length > 0 && (
                 <Button variant="ghost" size="sm" className="h-6 text-[11px]" onClick={() => setSelectedProtocols([])}>

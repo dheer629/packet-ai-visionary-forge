@@ -116,8 +116,8 @@ const RULES: ProfileRule[] = [
     name: 'Name resolution (DNS)',
     markers: ['DNS', 'MDNS', 'LLMNR'],
     filters: () => [
-      { id: 'dns-queries', label: 'Queries only', description: 'Requests sent to resolvers.', protocols: ['DNS', 'mDNS', 'LLMNR'], text: 'Query' },
-      { id: 'dns-answers', label: 'Responses only', description: 'Replies from resolvers.', protocols: ['DNS', 'mDNS', 'LLMNR'], text: 'Response' },
+      { id: 'dns-queries', label: 'Queries only', description: 'Requests sent to resolvers.', protocols: ['DNS', 'DNS (TCP)', 'mDNS', 'LLMNR'], text: 'Query' },
+      { id: 'dns-answers', label: 'Responses only', description: 'Replies from resolvers.', protocols: ['DNS', 'DNS (TCP)', 'mDNS', 'LLMNR'], text: 'Response' },
     ],
   },
   {
@@ -139,11 +139,11 @@ const RULES: ProfileRule[] = [
   },
   {
     name: 'Routing and tunnels',
-    markers: ['BGP', 'OSPF', 'IS-IS', 'GRE', 'VXLAN', 'GENEVE', 'MPLS', 'VLAN'],
+    markers: ['BGP', 'OSPF', 'IS-IS', 'GRE', 'VXLAN', 'GENEVE', 'MPLS', '802.1Q', '802.1AD'],
     filters: (match) => [
       { id: 'routing-control', label: 'Routing protocols', description: 'Observed routing protocol layers.', protocols: match('BGP', 'OSPF', 'IS-IS') },
       { id: 'routing-tunnels', label: 'Tunnelled traffic', description: 'Observed encapsulation layers.', protocols: match('GRE', 'VXLAN', 'GENEVE', 'MPLS') },
-      { id: 'routing-vlan', label: 'VLAN traffic', description: 'Observed VLAN-tagged frames.', protocols: match('VLAN', 'QinQ') },
+      { id: 'routing-vlan', label: 'VLAN traffic', description: 'Observed VLAN-tagged frames.', protocols: match('802.1Q', '802.1ad') },
     ],
   },
 ];

@@ -27,10 +27,11 @@ export function matchesProtocolFilter(packet: any, protocols: string[] = [], tex
 }
 
 const aliases: Record<string, string[]> = {
-  eth: ['Ethernet'], sll: ['SLL', 'Linux SLL'], sll2: ['SLL2', 'Linux SLL2'],
-  vlan: ['VLAN'], qinq: ['QinQ'], mpls: ['MPLS'], pppoe: ['PPPoE'],
+  eth: ['Ethernet'], sll: ['Linux cooked (SLL)'], sll2: ['Linux cooked v2 (SLL2)'],
+  loopback: ['Loopback'], vlan: ['802.1Q VLAN'], qinq: ['802.1ad QinQ'],
+  mpls: ['MPLS unicast', 'MPLS multicast'], pppoe: ['PPPoE Discovery', 'PPPoE Session'],
   arp: ['ARP', 'RARP'], icmp: ['ICMP'], icmpv6: ['ICMPv6', 'NDP'],
-  dns: ['DNS', 'mDNS', 'LLMNR'], dhcp: ['DHCP', 'BOOTP'], http: ['HTTP'],
+  dns: ['DNS', 'DNS (TCP)', 'mDNS', 'LLMNR'], dhcp: ['DHCP', 'BOOTP'], http: ['HTTP'],
   tls: ['TLS', 'SSL'], rtp: ['RTP', 'RTCP'], ftp: ['FTP', 'SMTP', 'POP3', 'IMAP'],
   gtpu: ['GTPv1-U', 'GTP-U'], gtpc2: ['GTPv2-C', 'GTPv2', 'GTP-C'],
   s1ap: ['S1AP', 'NGAP'], m3ua: ['M3UA', 'SCCP'],
