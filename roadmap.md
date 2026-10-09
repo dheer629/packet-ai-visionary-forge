@@ -1,8 +1,8 @@
 # Roadmap
 
 ## Protocols and filter suggestions
-- [ ] Expose every observed protocol, including nested protocol layers, with per-frame counts and a searchable capability catalog.
-- [ ] Suggest filters for all matching trace families, not just the dominant profile; verify matching and counts with tests and a captured-byte upload.
+- [x] Expose every observed protocol, including nested protocol layers, with per-frame counts and a searchable capability catalog; unavailable entries stay explicit.
+- [x] Suggest filters for all matching trace families, not just the dominant profile; 20 regression tests pass. Binary DNS/GTP capture verified queries, signalling, nested UDP selection, and JSON export with no browser errors.
 
 ## Current empty-capture report
 - [x] Repair Analyze PCAP so it decodes the selected file instead of reopening the picker; support actual drag-and-drop.
