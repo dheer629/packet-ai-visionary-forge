@@ -64,7 +64,7 @@ export function detectApplication(b: Uint8Array, transport: 'TCP' | 'UDP', sport
       if (len + 4 === n && end > 5 && end + 16 <= n && /^\d+\.\d+[^\0]*\0/.test(text(b.subarray(5)))) return hit('MySQL', 'MySQL protocol-10 server greeting and packet length', n);
     }
     // RESP requests require a complete array of bulk strings; a lone +OK is ambiguous.
-    if (/^\*[1-9]\d{0,2}\r\n/.test(head) && n <= 65536) {
+    if (/^\*[1-9]\d{0,2}\r\n/.test(head) && n <= 2048 && b.every((byte) => byte < 128)) {
       let cur = head.indexOf('\r\n') + 2;
       const count = Number(head.slice(1, cur - 2));
       let valid = true;

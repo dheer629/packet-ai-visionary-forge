@@ -54,6 +54,10 @@ export const decoderCapabilities: DecoderCapability[] = [
   { id: 'tcpstream', name: 'TCP stream reassembly', layer: 'Transport', level: 'Unavailable', notes: 'Per-packet decoding only; segments are not reassembled into streams.' },
 
   // Application
+  { id: 'http2', name: 'HTTP/2', layer: 'Application', level: 'Partial', notes: 'Cleartext connection preface only; no frame stream, HPACK, gRPC or encrypted HTTP/2 decoding.' },
+  { id: 'redis', name: 'Redis', layer: 'Application', level: 'Partial', notes: 'Complete ASCII RESP bulk-string request arrays only; no fragmented requests, responses or encrypted payload decoding.' },
+  { id: 'postgres', name: 'PostgreSQL', layer: 'Application', level: 'Partial', notes: 'v3 startup with user parameter and SSL/GSS negotiation request envelope; query/result streams are not decoded.' },
+  { id: 'mysql', name: 'MySQL', layer: 'Application', level: 'Partial', notes: 'Protocol-10 server greeting, protocol and server version only; query/result streams are not decoded.' },
   { id: 'dns', name: 'DNS / mDNS / LLMNR', layer: 'Application', level: 'Available', notes: 'Transaction ID, flags, question name/type/class, answer counts.' },
   { id: 'dhcp', name: 'DHCPv4 (BOOTP)', layer: 'Application', level: 'Available', notes: 'Message type option, client/your/server addresses, transaction ID.' },
   { id: 'dhcpv6', name: 'DHCPv6', layer: 'Application', level: 'Partial', notes: 'Message type and transaction ID; options are not enumerated.' },

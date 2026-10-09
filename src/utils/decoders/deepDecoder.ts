@@ -7,6 +7,7 @@
  */
 
 /** Byte range of a single decoded field: [offset, length] inside the frame. */
+import { detectApplication } from './protocolDetection';
 export type FieldOffsets = Record<string, [number, number]>;
 
 export interface DecodedLayer {
@@ -311,6 +312,9 @@ function decodeIPv4(b: Bytes, o: number, ctx: Ctx) {
   if (!need(b, o, 20, ctx)) return;
   const ihl = (b[o] & 0x0f) * 4;
   const total = u16(b, o + 2);
+  if (b[o] >> 4 !== 4 || ihl < 20 || total < ihl || !need(b, o, ihl, ctx)) return;
+  if (o + total > b.length) ctx.truncated = true;
+  b = b.subarray(0, Math.min(b.length, o + total));
   const flags = (b[o + 6] >> 5) & 0x07;
   const fragOffset = ((b[o + 6] & 0x1f) << 8 | b[o + 7]) * 8;
   const proto = b[o + 9];
@@ -356,12 +360,20 @@ function decodeIPv4(b: Bytes, o: number, ctx: Ctx) {
     ctx.info = `Fragmented IP protocol=${ipProtoName(proto)}, offset=${fragOffset}${flags & 0x01 ? ', more fragments' : ''} (reassembly not performed)`;
     return;
   }
+  if (flags & 1) {
+    ctx.info = 'IPv4 first fragment (application detection deferred until reassembly)';
+    return;
+  }
   decodeIpPayload(b, o + ihl, proto, ctx);
 }
 
 function decodeIPv6(b: Bytes, o: number, ctx: Ctx) {
   if (!need(b, o, 40, ctx)) return;
   const payloadLen = u16(b, o + 4);
+  if (payloadLen > 0) {
+    if (o + 40 + payloadLen > b.length) ctx.truncated = true;
+    b = b.subarray(0, Math.min(b.length, o + 40 + payloadLen));
+  }
   let next = b[o + 6];
   const src = ipv6(b, o + 8), dst = ipv6(b, o + 24);
   ctx.push('IPv6', o, {
@@ -395,7 +407,7 @@ function decodeIPv6(b: Bytes, o: number, ctx: Ctx) {
       ctx.push('IPv6 Fragment header', cur, { 'Next header': hdrNext, 'Fragment offset': off, 'M flag': b[cur + 3] & 0x01, Identification: u32(b, cur + 4) }, 8);
       cur += 8;
       next = hdrNext;
-      if (off > 0) {
+      if (off > 0 || (b[cur - 5] & 1)) {
         ctx.protocol = 'IPv6 fragment';
         ctx.info = `IPv6 fragment offset=${off} (reassembly not performed)`;
         return;
@@ -505,6 +517,10 @@ function decodeTCP(b: Bytes, o: number, ctx: Ctx) {
   if (!need(b, o, 20, ctx)) return;
   const sport = u16(b, o), dport = u16(b, o + 2);
   const dataOffset = ((b[o + 12] >> 4) & 0x0f) * 4;
+  if (dataOffset < 20 || !need(b, o, dataOffset, ctx)) {
+    ctx.info = 'Invalid or truncated TCP header';
+    return;
+  }
   const flagBits = b[o + 13];
   const flags = [
     flagBits & 0x01 && 'FIN', flagBits & 0x02 && 'SYN', flagBits & 0x04 && 'RST',
@@ -549,6 +565,9 @@ function decodeTCP(b: Bytes, o: number, ctx: Ctx) {
 function decodeUDP(b: Bytes, o: number, ctx: Ctx) {
   if (!need(b, o, 8, ctx)) return;
   const sport = u16(b, o), dport = u16(b, o + 2), len = u16(b, o + 4);
+  if (len < 8) { ctx.info = 'Invalid UDP length'; return; }
+  if (o + len > b.length) ctx.truncated = true;
+  b = b.subarray(0, Math.min(b.length, o + len));
   ctx.push('UDP', o, {
     'Source port': sport, 'Destination port': dport, Length: len, Checksum: hex(u16(b, o + 6), 4),
   }, 8, {
@@ -601,23 +620,7 @@ const sctpChunkName = (t: number) =>
 /* ------------------------------------------------------------------ */
 
 function decodeUdpApp(b: Bytes, o: number, sport: number, dport: number, ctx: Ctx) {
-  const p = (n: number) => sport === n || dport === n;
-  if (p(53)) return decodeDns(b, o, ctx, 'DNS');
-  if (p(5353)) return decodeDns(b, o, ctx, 'mDNS');
-  if (p(5355)) return decodeDns(b, o, ctx, 'LLMNR');
-  if (p(67) || p(68)) return decodeDhcp(b, o, ctx);
-  if (p(546) || p(547)) return decodeDhcpv6(b, o, ctx);
-  if (p(123)) return decodeNtp(b, o, ctx);
-  if (p(161) || p(162)) return decodeSnmp(b, o, ctx);
-  if (p(5060)) return decodeSip(b, o, ctx, 'UDP');
-  if (p(1812) || p(1813) || p(1645)) return decodeRadius(b, o, ctx);
-  if (p(5683)) return decodeCoap(b, o, ctx);
-  if (p(2152) || p(2123)) return decodeGtp(b, o, ctx, dport === 2123 || sport === 2123);
-  if (p(8805)) return decodePfcp(b, o, ctx);
-  if (p(4789)) return decodeVxlan(b, o, ctx);
-  if (p(6081)) return decodeGeneve(b, o, ctx);
-  if (p(3868)) return decodeDiameter(b, o, ctx);
-  if (sport >= 16384 && dport >= 16384) return decodeRtp(b, o, ctx);
+  decodeDetectedApp(b, o, sport, dport, ctx, 'UDP');
 }
 
 function decodeDns(b: Bytes, o: number, ctx: Ctx, name: string) {
@@ -839,22 +842,48 @@ function decodeM3ua(b: Bytes, o: number, ctx: Ctx) {
 /* ------------------------------------------------------------------ */
 
 function decodeTcpApp(b: Bytes, o: number, sport: number, dport: number, ctx: Ctx) {
-  const p = (n: number) => sport === n || dport === n;
-  if (p(443) || p(8443) || p(993) || p(995) || b[o] === 0x16 && b[o + 1] === 0x03) return decodeTls(b, o, ctx);
-  if (p(80) || p(8080) || p(8000)) return decodeHttp(b, o, ctx);
-  if (p(53)) return decodeDns(b, o + 2, ctx, 'DNS (TCP)');
-  if (p(22)) return decodeBanner(b, o, ctx, 'SSH');
-  if (p(21)) return decodeBanner(b, o, ctx, 'FTP');
-  if (p(25) || p(587)) return decodeBanner(b, o, ctx, 'SMTP');
-  if (p(110)) return decodeBanner(b, o, ctx, 'POP3');
-  if (p(143)) return decodeBanner(b, o, ctx, 'IMAP');
-  if (p(5060)) return decodeSip(b, o, ctx, 'TCP');
-  if (p(1883)) return decodeMqtt(b, o, ctx);
-  if (p(502)) return decodeModbus(b, o, ctx);
-  if (p(3868)) return decodeDiameter(b, o, ctx);
-  // Fall back to sniffing an HTTP request line in unknown ports.
-  const head = ascii(b, o, 8);
-  if (/^(GET|POST|PUT|HEAD|DELETE|OPTIONS|PATCH|HTTP\/)/.test(head)) return decodeHttp(b, o, ctx);
+  decodeDetectedApp(b, o, sport, dport, ctx, 'TCP');
+}
+
+function decodeDetectedApp(b: Bytes, o: number, sport: number, dport: number, ctx: Ctx, transport: 'TCP' | 'UDP') {
+  const detection = detectApplication(b.subarray(o), transport, sport, dport);
+  if (!detection) return;
+  const before = ctx.layers.length;
+  switch (detection.name) {
+    case 'DNS': case 'mDNS': case 'LLMNR': decodeDns(b, o, ctx, detection.name); break;
+    case 'DNS (TCP)': decodeDns(b.subarray(0, o + (detection.length ?? b.length - o)), o + 2, ctx, detection.name); break;
+    case 'DHCP': decodeDhcp(b, o, ctx); break;
+    case 'DHCPv6': decodeDhcpv6(b, o, ctx); break;
+    case 'NTP': decodeNtp(b, o, ctx); break;
+    case 'SNMP': decodeSnmp(b, o, ctx); break;
+    case 'SIP': decodeSip(b, o, ctx, transport); break;
+    case 'HTTP': decodeHttp(b, o, ctx); break;
+    case 'TLS': decodeTls(b, o, ctx); break;
+    case 'SSH': case 'FTP': case 'SMTP': case 'POP3': case 'IMAP': decodeBanner(b, o, ctx, detection.name); break;
+    case 'MQTT': decodeMqtt(b, o, ctx); break;
+    case 'Modbus/TCP': decodeModbus(b, o, ctx); break;
+    case 'Diameter': decodeDiameter(b, o, ctx); break;
+    case 'RADIUS': decodeRadius(b, o, ctx); break;
+    case 'CoAP': decodeCoap(b, o, ctx); break;
+    case 'GTPv1-U': decodeGtp(b, o, ctx, false); break;
+    case 'GTPv2-C': decodeGtpv2(b, o, ctx); break;
+    case 'PFCP': decodePfcp(b, o, ctx); break;
+    case 'VXLAN': decodeVxlan(b, o, ctx); break;
+    case 'GENEVE': decodeGeneve(b, o, ctx); break;
+    case 'RTP': case 'RTCP': decodeRtp(b, o, ctx); break;
+    default: {
+      const fields: Record<string, string | number> = { 'Decode scope': 'Partial — signature and envelope only; no stream/body decoding' };
+      let ranges: FieldOffsets | undefined;
+      if (detection.name === 'HTTP/2') { fields.Preface = 'PRI * HTTP/2.0'; ranges = { Preface: [o, 24] }; }
+      if (detection.name === 'Redis') { fields['Array elements'] = Number(new TextDecoder().decode(b.subarray(o + 1, o + 8)).split('\r\n')[0]); }
+      if (detection.name === 'PostgreSQL') { fields.Length = u32(b, o); fields['Protocol / request code'] = u32(b, o + 4); ranges = { Length: [o, 4], 'Protocol / request code': [o + 4, 4] }; }
+      if (detection.name === 'MySQL') { fields['Protocol version'] = b[o + 4]; fields['Server version'] = ascii(b, o + 5, b.indexOf(0, o + 5) - o - 5); ranges = { 'Protocol version': [o + 4, 1] }; }
+      ctx.push(detection.name, o, fields, detection.length, ranges);
+      ctx.info = `${detection.name} ${detection.evidence} (partial decoding)`;
+    }
+  }
+  const layer = ctx.layers[before];
+  if (layer) layer.fields['Detection evidence'] = detection.evidence;
 }
 
 function decodeTls(b: Bytes, o: number, ctx: Ctx) {
@@ -905,7 +934,7 @@ function extractSni(b: Bytes, recordStart: number): string {
 }
 
 function decodeHttp(b: Bytes, o: number, ctx: Ctx) {
-  const text = ascii(b, o, Math.min(1024, b.length - o));
+  const text = new TextDecoder().decode(b.subarray(o, o + 1024));
   const [firstLine] = text.split('\r\n');
   const hostMatch = text.match(/\r\nHost:\s*([^\r\n]+)/i);
   const fields: Record<string, string | number> = {};
@@ -927,7 +956,7 @@ function decodeHttp(b: Bytes, o: number, ctx: Ctx) {
 }
 
 function decodeSip(b: Bytes, o: number, ctx: Ctx, transport: string) {
-  const text = ascii(b, o, Math.min(2048, b.length - o));
+  const text = new TextDecoder().decode(b.subarray(o, o + 2048));
   const [firstLine] = text.split('\r\n');
   const callId = text.match(/\r\nCall-ID:\s*([^\r\n]+)/i)?.[1];
   const hasSdp = /application\/sdp/i.test(text);
@@ -942,7 +971,7 @@ function decodeSip(b: Bytes, o: number, ctx: Ctx, transport: string) {
 }
 
 function decodeBanner(b: Bytes, o: number, ctx: Ctx, name: string) {
-  const line = ascii(b, o, Math.min(200, b.length - o)).split('\r\n')[0];
+  const line = new TextDecoder().decode(b.subarray(o, o + 200)).split('\r\n')[0];
   ctx.push(name, o, { 'First line': line || 'binary/encrypted payload' });
   ctx.info = line ? `${name}: ${line}` : `${name} payload (not plaintext)`;
 }
