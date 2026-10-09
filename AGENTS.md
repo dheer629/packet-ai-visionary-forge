@@ -5,3 +5,4 @@
 - Keep decoder capability claims explicit as full, partial, or unavailable, because unsupported protocol details must never be implied.
 - Derive TCP flow and expert events from decoded headers plus retained captured payload bytes; omit truncated frames from reassembly to avoid unsupported conclusions.
 - Publish offline capture results without invoking AI; explicit AI actions remain separate so connectivity and credentials cannot delay packet visibility.
+- Use the shared protocol-filter matcher for nested-layer facets and suggestion counts; registry-based catalog entries never imply a new dissector exists.
