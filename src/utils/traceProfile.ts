@@ -63,7 +63,7 @@ const RULES: ProfileRule[] = [
   },
   {
     name: 'Telecom signalling (Diameter / S1AP / NGAP)',
-    markers: ['DIAMETER', 'S1AP', 'NGAP', 'M3UA', 'SCTP'],
+    markers: ['DIAMETER', 'S1AP', 'NGAP', 'M3UA'],
     filters: (match) => [
       {
         id: 'sig-diameter',
@@ -160,12 +160,11 @@ interface Evidence {
 function collectEvidence(packets: any[]): Evidence | null {
   if (!Array.isArray(packets) || packets.length === 0) return null;
 
-  const counts = new Map<string, number>();
+  const counts = new Map<string, number>(protocolCounts(packets));
   const linkSet = new Set<string>();
 
   for (const p of packets) {
     if (!p) continue;
-    packetProtocolNames(p).forEach((name) => counts.set(name, (counts.get(name) || 0) + 1));
     if (p.linkType !== undefined && p.linkType !== null) {
       linkSet.add(p.linkTypeName || linkTypeName(Number(p.linkType)));
     }
@@ -231,7 +230,9 @@ function buildGeneralProfile(ev: Evidence): TraceProfile | null {
 export function detectTraceProfile(packets: any[]): TraceProfile | null {
   const ev = collectEvidence(packets);
   if (!ev) return null;
-  const matched = RULES.find((rule) => hasMarker(ev.names, rule.markers));
+  // Rank by matching frames, not the registry order or repeated nested layers.
+  const matched = RULES.map((rule) => ({ rule, count: packets.filter((packet) => hasMarker(packetProtocolNames(packet), rule.markers)).length }))
+    .filter((entry) => entry.count > 0).sort((a, b) => b.count - a.count)[0]?.rule;
   return matched ? buildRuleProfile(matched, ev, true) : buildGeneralProfile(ev);
 }
 

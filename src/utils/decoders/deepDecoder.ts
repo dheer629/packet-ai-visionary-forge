@@ -585,13 +585,13 @@ function decodeSCTP(b: Bytes, o: number, ctx: Ctx) {
   const chunks: string[] = [];
   let cur = o + 12;
   let guard = 0;
-  let firstDataOffset = -1;
+  const dataChunks: { offset: number; end: number; ppid: number }[] = [];
   while (cur + 4 <= b.length && guard++ < 16) {
     const type = b[cur];
     const len = u16(b, cur + 2);
-    if (len < 4) break;
+    if (len < 4 || cur + len > b.length) { ctx.truncated = true; break; }
     chunks.push(sctpChunkName(type));
-    if (type === 0 && firstDataOffset < 0) firstDataOffset = cur + 16;
+    if (type === 0 && len >= 16 && (b[cur + 1] & 3) === 3) dataChunks.push({ offset: cur + 16, end: cur + len, ppid: u32(b, cur + 12) });
     cur += Math.ceil(len / 4) * 4;
   }
   ctx.push('SCTP', o, {
@@ -604,10 +604,13 @@ function decodeSCTP(b: Bytes, o: number, ctx: Ctx) {
   ctx.destination = `${ctx.destination}:${dport}`;
   ctx.info = `SCTP ${sport} → ${dport} [${chunks.join(', ')}]`;
 
-  if (firstDataOffset > 0 && firstDataOffset < b.length) {
-    // M3UA commonly rides on SCTP port 2905.
-    if (sport === 2905 || dport === 2905) decodeM3ua(b, firstDataOffset, ctx);
-    else if (sport === 3868 || dport === 3868) decodeDiameter(b, firstDataOffset, ctx);
+  for (const chunk of dataChunks) {
+    const payload = b.subarray(chunk.offset, chunk.end);
+    if (chunk.ppid === 3 && payload.length >= 8 && payload[0] === 1 && payload[1] === 0 && u32(payload, 4) === payload.length) {
+      decodeM3ua(b.subarray(0, chunk.end), chunk.offset, ctx);
+    } else if (detectApplication(payload, 'TCP', sport, dport)?.name === 'Diameter') {
+      decodeDiameter(b.subarray(0, chunk.end), chunk.offset, ctx);
+    }
   }
 }
 
@@ -762,7 +765,8 @@ function decodeGtp(b: Bytes, o: number, ctx: Ctx, control: boolean) {
   }
   ctx.push('GTPv1-U', o, fields, headerLen);
   ctx.info = `${gtpuMsgName(msgType)} TEID=${hex(teid, 8)}`;
-  if (msgType === 255) decodeIpVersionSniff(b, o + headerLen, ctx);
+  if (msgType === 255 && !(flags & 4)) decodeIpVersionSniff(b, o + headerLen, ctx);
+  else if (msgType === 255 && flags & 4) ctx.info += ' (extension chain: inner decoding unavailable)';
 }
 
 const gtpuMsgName = (t: number) =>
