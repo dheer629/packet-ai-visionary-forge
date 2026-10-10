@@ -7,3 +7,4 @@
 - Publish offline capture results without invoking AI; explicit AI actions remain separate so connectivity and credentials cannot delay packet visibility.
 - Use the shared protocol-filter matcher for nested-layer facets and suggestion counts; registry-based catalog entries never imply a new dissector exists.
 - Gate application dispatch with stateless byte-signature validators; use ports only as ambiguity context and leave unmatched payloads at their decoded transport layer.
+- Validate datagram option/control-block envelopes in worker-safe signature modules before dispatch, because fixed header bytes alone cannot substantiate application recognition.
