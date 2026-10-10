@@ -1,9 +1,9 @@
 # Roadmap
 
 ## Enhanced protocol auto-detection
-- [ ] Add strict byte-signature recognition on nonstandard ports, validate standard-port payloads, and retain transport labels for ambiguous data.
-- [ ] Add evidence-backed partial recognition for cleartext HTTP/2, Redis, PostgreSQL and MySQL handshakes; improve profiles and coverage labels.
-- [ ] Verify positive, malformed, truncated, wrong-port and encrypted cases with tests and a binary capture upload.
+- [x] Add strict byte-signature recognition on nonstandard ports, validate standard-port payloads, and retain transport labels for ambiguous data. Bound parsing to IP/UDP lengths and complete SCTP DATA chunks.
+- [x] Add evidence-backed partial recognition for cleartext HTTP/2, Redis, PostgreSQL and MySQL handshakes; rank profiles by observed frame counts, avoid SCTP-only telecom claims and expose detection evidence.
+- [x] Verify positive, malformed, truncated, wrong-port and encrypted cases: 57 tests pass; eight-frame binary capture verified nonstandard-port labels, database filtering and JSON evidence export without browser errors.
 
 ## Protocols and filter suggestions
 - [x] Expose every observed protocol, including nested protocol layers, with per-frame counts and a searchable capability catalog; unavailable entries stay explicit.
