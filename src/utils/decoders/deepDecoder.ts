@@ -661,10 +661,15 @@ function decodeDhcp(b: Bytes, o: number, ctx: Ctx) {
   let msgType = 0;
   let cur = o + 240;
   let guard = 0;
-  while (cur + 2 <= b.length && b[cur] !== 255 && guard++ < 64) {
-    const opt = b[cur], len = b[cur + 1];
-    if (opt === 53) { msgType = b[cur + 2]; break; }
-    cur += 2 + len;
+  while (cur < b.length && guard++ < b.length) {
+    const opt = b[cur++];
+    if (opt === 255) break;
+    if (opt === 0) continue;
+    if (cur >= b.length) break;
+    const len = b[cur++];
+    if (cur + len > b.length) break;
+    if (opt === 53 && len === 1) { msgType = b[cur]; break; }
+    cur += len;
   }
   const name = ({ 1: 'Discover', 2: 'Offer', 3: 'Request', 4: 'Decline', 5: 'ACK', 6: 'NAK', 7: 'Release', 8: 'Inform' } as Record<number, string>)[msgType] ?? 'Message';
   ctx.push('DHCP', o, {
@@ -682,8 +687,13 @@ function decodeDhcp(b: Bytes, o: number, ctx: Ctx) {
 function decodeDhcpv6(b: Bytes, o: number, ctx: Ctx) {
   if (!need(b, o, 4, ctx)) return;
   const type = b[o];
-  const name = ({ 1: 'SOLICIT', 2: 'ADVERTISE', 3: 'REQUEST', 5: 'RENEW', 7: 'REPLY', 11: 'INFORMATION-REQUEST' } as Record<number, string>)[type] ?? `Type ${type}`;
-  ctx.push('DHCPv6', o, { 'Message type': name, 'Transaction ID': hex(u24(b, o + 1), 6) });
+  const name = ({ 1: 'SOLICIT', 2: 'ADVERTISE', 3: 'REQUEST', 5: 'RENEW', 7: 'REPLY', 11: 'INFORMATION-REQUEST', 12: 'RELAY-FORW', 13: 'RELAY-REPL' } as Record<number, string>)[type] ?? `Type ${type}`;
+  if (type === 12 || type === 13) {
+    if (!need(b, o, 34, ctx)) return;
+    ctx.push('DHCPv6', o, { 'Message type': name, 'Hop count': b[o + 1], 'Link address': ipv6(b, o + 2), 'Peer address': ipv6(b, o + 18), 'Decode scope': 'Partial: relay envelope; encapsulated options not dissected' }, 34,
+      { 'Message type': [o, 1], 'Hop count': [o + 1, 1], 'Link address': [o + 2, 16], 'Peer address': [o + 18, 16] });
+  } else ctx.push('DHCPv6', o, { 'Message type': name, 'Transaction ID': hex(u24(b, o + 1), 6) }, 4,
+    { 'Message type': [o, 1], 'Transaction ID': [o + 1, 3] });
   ctx.info = `DHCPv6 ${name}`;
 }
 
@@ -725,15 +735,17 @@ function decodeCoap(b: Bytes, o: number, ctx: Ctx) {
 }
 
 function decodeRtp(b: Bytes, o: number, ctx: Ctx) {
-  if (!need(b, o, 12, ctx)) return;
+  if (!need(b, o, 8, ctx)) return;
   const version = (b[o] >> 6) & 0x03;
   if (version !== 2) return;
   const pt = b[o + 1] & 0x7f;
-  if (pt >= 72 && pt <= 76) {
-    ctx.push('RTCP', o, { Version: version, 'Packet type': b[o + 1], Length: u16(b, o + 2) });
+  if (b[o + 1] >= 200 && b[o + 1] <= 207) {
+    ctx.push('RTCP', o, { Version: version, 'Packet type': b[o + 1], 'Report count / subtype': b[o] & 31, 'Block length': (u16(b, o + 2) + 1) * 4, SSRC: hex(u32(b, o + 4), 8), 'Decode scope': 'Partial: first control-block header; report contents not dissected' }, 8,
+      { Version: [o, 1], 'Packet type': [o + 1, 1], 'Report count / subtype': [o, 1], 'Block length': [o + 2, 2], SSRC: [o + 4, 4] });
     ctx.info = `RTCP type ${b[o + 1]}`;
     return;
   }
+  if (!need(b, o, 12, ctx)) return;
   ctx.push('RTP', o, { Version: version, 'Payload type': pt, 'Sequence number': u16(b, o + 2), Timestamp: u32(b, o + 4), SSRC: hex(u32(b, o + 8), 8), Marker: (b[o + 1] >> 7) & 1 });
   ctx.info = `RTP PT=${pt} Seq=${u16(b, o + 2)} SSRC=${hex(u32(b, o + 8), 8)}`;
 }

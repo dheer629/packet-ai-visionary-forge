@@ -1,5 +1,10 @@
 # Roadmap
 
+## Continued detection hardening
+- [ ] Validate DHCP option envelopes and DHCPv6 relay headers; recognize PFCP on nonstandard ports only with corroborating information elements.
+- [ ] Separate RTCP compound-packet validation from RTP headers and reject malformed/truncated datagrams.
+- [ ] Verify packet fields, protocol filters, and exports with byte fixtures and a browser capture upload.
+
 ## Enhanced protocol auto-detection
 - [x] Add strict byte-signature recognition on nonstandard ports, validate standard-port payloads, and retain transport labels for ambiguous data. Bound parsing to IP/UDP lengths and complete SCTP DATA chunks.
 - [x] Add evidence-backed partial recognition for cleartext HTTP/2, Redis, PostgreSQL and MySQL handshakes; rank profiles by observed frame counts, avoid SCTP-only telecom claims and expose detection evidence.

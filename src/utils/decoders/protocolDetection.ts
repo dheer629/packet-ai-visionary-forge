@@ -1,4 +1,5 @@
 /** Stateless, worker-safe signature gates. Ports only resolve ambiguous wire formats. */
+import { isDhcpMessage, isDhcpv6Message, isPfcpMessage, isRtcpMessage } from './datagramSignatures';
 export interface ProtocolDetection { name: string; evidence: string; length?: number; }
 const u16 = (b: Uint8Array, o: number) => b[o] * 256 + b[o + 1];
 const u24 = (b: Uint8Array, o: number) => b[o] * 65536 + b[o + 1] * 256 + b[o + 2];
@@ -98,18 +99,19 @@ export function detectApplication(b: Uint8Array, transport: 'TCP' | 'UDP', sport
     return null;
   }
   if (isDnsMessage(b)) return hit(p(5353) ? 'mDNS' : p(5355) ? 'LLMNR' : 'DNS', 'Structurally valid DNS header, names and record lengths', n);
-  if (n >= 240 && [1, 2].includes(b[0]) && b[2] <= 16 && u32(b, 236) === 0x63825363) return hit('DHCP', 'BOOTP header and DHCP magic cookie');
-  if ((p(546) || p(547)) && n >= 4 && b[0] >= 1 && b[0] <= 11) return hit('DHCPv6', 'DHCPv6 message type with service-port context');
+  if (isDhcpMessage(b)) return hit('DHCP', 'BOOTP header, DHCP cookie and complete message-type option envelope');
+  if ((p(546) || p(547)) && isDhcpv6Message(b)) return hit('DHCPv6', 'DHCPv6 header and bounded options/relay envelope with service-port context');
   if (p(123) && n >= 48 && (b[0] >> 3 & 7) >= 1 && (b[0] >> 3 & 7) <= 4 && (b[0] & 7) >= 1 && (b[0] & 7) <= 5) return hit('NTP', 'NTP version/mode and complete base header');
   if ((p(161) || p(162)) && n >= 8 && b[0] === 0x30 && b[2] === 2 && b[3] === 1 && [0, 1, 3].includes(b[4]) && b[1] + 2 === n) return hit('SNMP', 'BER sequence and SNMP version envelope');
   if ([1812, 1813, 1645].some(p) && n >= 20 && [1, 2, 3, 4, 5, 11, 12, 13].includes(b[0]) && u16(b, 2) === n) return hit('RADIUS', 'RADIUS code and datagram length');
   if (p(5683) && n >= 4 && b[0] >> 6 === 1 && (b[0] & 15) <= 8 && n >= 4 + (b[0] & 15) && (b[1] >> 5) <= 5) return hit('CoAP', 'CoAP version, token length and code');
   if (n >= 8 && b[0] >> 5 === 2 && (b[0] & 7) === 0 && b[1] > 0 && u16(b, 2) + 4 === n && n >= (b[0] & 8 ? 12 : 8)) return hit('GTPv2-C', 'GTPv2 header version, flags and message length', n);
   if (n >= 8 && b[0] >> 5 === 1 && (b[0] & 0x10) && !(b[0] & 8) && [1, 2, 26, 31, 254, 255].includes(b[1]) && u16(b, 2) + 8 === n && (!((b[0] & 7)) || n >= 12)) return hit('GTPv1-U', 'GTPv1-U flags, message type and length', n);
-  if (p(8805) && n >= (b[0] & 1 ? 16 : 8) && b[0] >> 5 === 1 && !(b[0] & 0x1c) && u16(b, 2) + 4 === n && [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 50, 51, 52, 53, 54, 55, 56, 57].includes(b[1])) return hit('PFCP', 'PFCP version, flags, type and message length', n);
+  if (isPfcpMessage(b, p(8805))) return hit('PFCP', 'PFCP header and bounded information elements; service-port or Node ID/Recovery Time Stamp corroboration', n);
   if (p(4789) && n >= 22 && b[0] === 8 && b[1] === 0 && b[2] === 0 && b[3] === 0 && b[7] === 0) return hit('VXLAN', 'VXLAN I-bit and reserved fields');
   if (p(6081) && n >= 22 && b[0] >> 6 === 0 && u16(b, 2) === 0x6558 && 8 + (b[0] & 63) * 4 + 14 <= n) return hit('GENEVE', 'GENEVE version, option length and Ethernet protocol');
   // RTP's version bits alone are weak; retain port context and validate variable header size.
+  if (sport >= 16384 && dport >= 16384 && isRtcpMessage(b)) return hit('RTCP', 'Complete RTCP block lengths, type-specific header sizes and padding with media-port context', n);
   if (sport >= 16384 && dport >= 16384 && n >= 12 && b[0] >> 6 === 2) {
     const header = 12 + (b[0] & 15) * 4;
     let end = header;
@@ -118,9 +120,7 @@ export function detectApplication(b: Uint8Array, transport: 'TCP' | 'UDP', sport
       end += 4 + u16(b, header + 2) * 4;
     }
     if (end <= n && (!(b[0] & 32) || (b[n - 1] > 0 && b[n - 1] <= n - end))) {
-      if (b[1] >= 200 && b[1] <= 204) {
-        if ((u16(b, 2) + 1) * 4 <= n) return hit('RTCP', 'RTCP type and length with media-port context');
-      } else if ((b[1] & 127) < 72 || (b[1] & 127) > 76) return hit('RTP', 'RTP version and variable-header bounds with media-port context');
+      if ((b[1] & 127) < 64 || (b[1] & 127) > 95) return hit('RTP', 'RTP version and variable-header bounds with media-port context');
     }
   }
   return null;
