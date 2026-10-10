@@ -73,6 +73,25 @@ describe('byte-evidence automatic detection', () => {
     const decoded = decodePacketBytes(packet(cases[0][1]));
     expect(decoded.layers.at(-1)?.fields).toMatchObject({ Method: 'GET', URI: '/example', Host: 'example.test' });
   });
+  it('recognizes a complete MySQL greeting but rejects a length mismatch', () => {
+    const payload = new Uint8Array(34);
+    payload[0] = 30; payload[4] = 10;
+    payload.set(bytes('8.0.36\0'), 5);
+    expect(decodePacketBytes(packet(payload)).protocol).toBe('MySQL');
+    payload[0] = 31;
+    expect(decodePacketBytes(packet(payload, 'TCP', 3306)).protocol).toBe('TCP');
+  });
+  it('recognizes MQTT CONNECT without port reliance and rejects invalid flags', () => {
+    const payload = new Uint8Array([0x10, 12, 0, 4, 77, 81, 84, 84, 4, 2, 0, 60, 0, 0]);
+    expect(decodePacketBytes(packet(payload)).protocol).toBe('MQTT');
+    payload[0] = 0x11;
+    expect(decodePacketBytes(packet(payload, 'TCP', 1883)).protocol).toBe('TCP');
+  });
+  it('preserves signature-only HTTP/2 and database coverage as partial', () => {
+    const decoded = decodePacketBytes(packet(cases[2][1]));
+    expect(decoded.layers.at(-1)?.fields['Decode scope']).toContain('Partial');
+    expect(decoded.layers.at(-1)?.fieldOffsets?.Preface).toEqual([54, 24]);
+  });
   it('ranks capture profiles by observed frame counts instead of first matched family', () => {
     const packets = [gtp, dns, dns, dns].map((payload) => { const d = decodePacketBytes(packet(payload, 'UDP')); return { protocol: d.protocol, protocolStack: d.stack, info: d.info }; });
     expect(detectTraceProfile(packets)?.name).toBe('Name resolution (DNS)');
