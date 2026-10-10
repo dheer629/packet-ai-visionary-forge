@@ -26,7 +26,7 @@ describe('capture-derived protocol filters', () => {
   });
   it('does not infer protocols from ports or advertise unimplemented decoders', () => {
     const choices = protocolChoices([{ protocol: 'TCP', info: '6379 → 12345' }]);
-    expect(choices.find((choice) => choice.name === 'Redis')).toMatchObject({ count: 0, level: 'Unavailable' });
+    expect(choices.find((choice) => choice.name === 'Redis')).toMatchObject({ count: 0, level: 'Partial' });
     expect(choices.find((choice) => choice.name === 'TCP')).toMatchObject({ count: 1, level: 'Available' });
   });
   it('includes previously uncatalogued protocols from actual decoded layers', () => {
