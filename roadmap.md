@@ -1,9 +1,9 @@
 # Roadmap
 
 ## Continued detection hardening
-- [ ] Validate DHCP option envelopes and DHCPv6 relay headers; recognize PFCP on nonstandard ports only with corroborating information elements.
-- [ ] Separate RTCP compound-packet validation from RTP headers and reject malformed/truncated datagrams.
-- [ ] Verify packet fields, protocol filters, and exports with byte fixtures and a browser capture upload.
+- [x] Validate DHCP option envelopes and DHCPv6 relay headers; recognize PFCP on nonstandard ports only with corroborating information elements.
+- [x] Separate RTCP compound-packet validation from RTP headers and reject malformed/truncated datagrams.
+- [x] Verify packet fields, protocol filters, and exports: 49 tests passed; three-frame binary capture displayed PFCP, RTCP and transport-only malformed DHCPv6, signalling filter exported one evidence-backed PFCP record, with no browser errors. PFCP IE bodies and RTCP report contents remain partial.
 
 ## Enhanced protocol auto-detection
 - [x] Add strict byte-signature recognition on nonstandard ports, validate standard-port payloads, and retain transport labels for ambiguous data. Bound parsing to IP/UDP lengths and complete SCTP DATA chunks.
