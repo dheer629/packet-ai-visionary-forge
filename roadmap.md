@@ -1,5 +1,11 @@
 # Roadmap
 
+## Production readiness and comprehensive decoding
+- [ ] Audit production blockers and evaluate a maintained browser-local Wireshark-compatible engine, including licensing and deployment constraints.
+- [ ] Integrate verified decoder breadth with worker isolation, honest capability discovery and existing capture-workflow compatibility.
+- [ ] Validate with provenance-tracked real PCAP/PCAPNG captures and reference dissections across capture formats, link types, protocol families and malformed records.
+- [ ] Close privacy/security/performance blockers and publish a coverage report; never claim universal protocol support or testing.
+
 ## Continued detection hardening
 - [x] Validate DHCP option envelopes and DHCPv6 relay headers; recognize PFCP on nonstandard ports only with corroborating information elements.
 - [x] Separate RTCP compound-packet validation from RTP headers and reject malformed/truncated datagrams.
